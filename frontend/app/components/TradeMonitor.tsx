@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { ethers } from "ethers";
 import {
   PAIR_ABI,
@@ -14,33 +14,34 @@ import {
 } from "../lib/utils";
 import type { Trade } from "../lib/types";
 
+// Move analytics interfaces outside component
+interface PriceAnalytics {
+  priceImpact: number;
+  trendDirection: "up" | "down" | "neutral";
+  confidence: number;
+  whaleActivity: {
+    detected: boolean;
+    size: "medium" | "large" | "massive" | null;
+    predictedImpact: number;
+  };
+  marketMaking: {
+    detected: boolean;
+    addresses: string[];
+    confidence: number;
+  };
+  arbitrage: {
+    detected: boolean;
+    profitEstimate: number;
+    route: string[];
+  };
+}
+
 export function TradeMonitor() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [lastFetchedBlock, setLastFetchedBlock] = useState<number>(0);
-  const [processedTxHashes, setProcessedTxHashes] = useState<Set<string>>(
-    new Set()
-  );
-  const [priceAnalytics, setPriceAnalytics] = useState<{
-    priceImpact: number;
-    trendDirection: "up" | "down" | "neutral";
-    confidence: number;
-    whaleActivity: {
-      detected: boolean;
-      size: "medium" | "large" | "massive" | null;
-      predictedImpact: number;
-    };
-    marketMaking: {
-      detected: boolean;
-      addresses: string[];
-      confidence: number;
-    };
-    arbitrage: {
-      detected: boolean;
-      profitEstimate: number;
-      route: string[];
-    };
-  }>({
+  const processedTxHashes = useRef<Set<string>>(new Set());
+  const [priceAnalytics, setPriceAnalytics] = useState<PriceAnalytics>({
     priceImpact: 0,
     trendDirection: "neutral",
     confidence: 0,
@@ -60,6 +61,46 @@ export function TradeMonitor() {
       route: [],
     },
   });
+
+  // Debounce function for analytics updates
+  const debounceTimeout = useRef<NodeJS.Timeout>();
+  const updateAnalytics = useCallback((trade: Trade, prevTrades: Trade[]) => {
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+    }
+
+    debounceTimeout.current = setTimeout(() => {
+      const { direction, confidence } = analyzePriceTrend(trade, prevTrades);
+      const impact = calculatePriceImpact(trade);
+      const whaleActivity = detectWhaleActivity(trade, prevTrades);
+      const marketMaking = detectMarketMaking(trade, prevTrades);
+      const arbitrage = detectArbitrage(trade, prevTrades);
+
+      setPriceAnalytics({
+        priceImpact: impact,
+        trendDirection: direction,
+        confidence,
+        whaleActivity,
+        marketMaking,
+        arbitrage,
+      });
+    }, 1000); // Debounce for 1 second
+  }, []);
+
+  // Batch process trades
+  const batchSize = 5;
+  const processTrades = useCallback(
+    (newTrades: Trade[]) => {
+      setTrades((prevTrades) => {
+        const combinedTrades = [...newTrades, ...prevTrades].slice(0, 50); // Keep last 50 trades
+        if (newTrades.length > 0) {
+          updateAnalytics(newTrades[0], combinedTrades);
+        }
+        return combinedTrades;
+      });
+    },
+    [updateAnalytics]
+  );
 
   // Volume thresholds in USD for whale detection
   const WHALE_THRESHOLDS = {
@@ -210,27 +251,25 @@ export function TradeMonitor() {
   useEffect(() => {
     const wsProvider = new ethers.WebSocketProvider(CHAIN_CONFIG.wsRpcUrl!);
     const httpProvider = new ethers.JsonRpcProvider(CHAIN_CONFIG.httpRpcUrl!);
-
     let mounted = true;
-    let fetchInterval: NodeJS.Timeout;
+    let pendingTrades: Trade[] = [];
+    let processingTimeout: NodeJS.Timeout;
 
     const processSwapEvent = async (
       pairAddress: string,
       event: ethers.EventLog
     ) => {
       try {
-        // Skip if we've already processed this transaction
-        if (processedTxHashes.has(event.transactionHash)) {
+        if (processedTxHashes.current.has(event.transactionHash)) {
           return;
         }
 
-        // Verify this is a Swap event by checking the event signature
         const SWAP_EVENT_SIGNATURE =
           "Swap(address,address,uint256,uint256,uint256,uint256)";
         const swapEventHash = ethers.id(SWAP_EVENT_SIGNATURE);
 
         if (event.topics[0] !== swapEventHash) {
-          return; // Skip non-swap events
+          return;
         }
 
         const pair = PAIRS_TO_MONITOR.find((p) => p.address === pairAddress)!;
@@ -253,62 +292,43 @@ export function TradeMonitor() {
         };
 
         if (mounted) {
-          setProcessedTxHashes(
-            (prev) => new Set([...prev, event.transactionHash])
-          );
-          setTrades((prevTrades) => {
-            const newTrades = [trade, ...prevTrades].slice(0, 10);
+          processedTxHashes.current.add(event.transactionHash);
+          pendingTrades.push(trade);
 
-            const { direction, confidence } = analyzePriceTrend(
-              trade,
-              prevTrades
-            );
-            const impact = calculatePriceImpact(trade);
-
-            // Advanced analytics
-            const whaleActivity = detectWhaleActivity(trade, prevTrades);
-            const marketMaking = detectMarketMaking(trade, prevTrades);
-            const arbitrage = detectArbitrage(trade, prevTrades);
-
-            setPriceAnalytics({
-              priceImpact: impact,
-              trendDirection: direction,
-              confidence: confidence,
-              whaleActivity,
-              marketMaking,
-              arbitrage,
-            });
-
-            return newTrades;
-          });
+          // Process trades in batches
+          if (pendingTrades.length >= batchSize) {
+            processTrades([...pendingTrades]);
+            pendingTrades = [];
+          } else {
+            // Set a timeout to process remaining trades
+            if (processingTimeout) clearTimeout(processingTimeout);
+            processingTimeout = setTimeout(() => {
+              if (pendingTrades.length > 0) {
+                processTrades([...pendingTrades]);
+                pendingTrades = [];
+              }
+            }, 2000);
+          }
         }
       } catch (error) {
         console.error("Error processing swap event:", error);
       }
     };
 
-    const monitorPair = async (pairAddress: string) => {
-      try {
-        const pair = new ethers.Contract(pairAddress, PAIR_ABI, wsProvider);
-
-        // Listen for new swaps
-        pair.on("Swap", async (...args) => {
-          const event = args[args.length - 1];
-          await processSwapEvent(pairAddress, event);
-        });
-
-        console.log(
-          `Monitoring trades for pair: ${pairAddress} on ${CHAIN_CONFIG.name}`
-        );
-      } catch (error) {
-        console.error(`Error monitoring pair ${pairAddress}:`, error);
-      }
-    };
+    // Rate limit for historical fetches
+    let lastFetchTime = 0;
+    const FETCH_INTERVAL = 1000000; // 10 seconds
 
     const fetchHistoricalTrades = async () => {
+      const now = Date.now();
+      if (now - lastFetchTime < FETCH_INTERVAL) {
+        return;
+      }
+      lastFetchTime = now;
+
       try {
         const currentBlock = await httpProvider.getBlockNumber();
-        const fromBlock = lastFetchedBlock || currentBlock - 1000; // Use last fetched block if available
+        const fromBlock = lastFetchedBlock || currentBlock - 100; // Reduced block range
 
         for (const pair of PAIRS_TO_MONITOR) {
           const events = await fetchPairEvents(
@@ -330,25 +350,46 @@ export function TradeMonitor() {
       }
     };
 
-    const initialize = async () => {
-      await fetchHistoricalTrades();
-      for (const pair of PAIRS_TO_MONITOR) {
-        await monitorPair(pair.address);
-      }
+    // Websocket connection management
+    let wsReconnectTimeout: NodeJS.Timeout;
+    const setupWebSocket = () => {
+      const monitorPair = async (pairAddress: string) => {
+        try {
+          const pair = new ethers.Contract(pairAddress, PAIR_ABI, wsProvider);
+          pair.on("Swap", async (...args) => {
+            const event = args[args.length - 1];
+            await processSwapEvent(pairAddress, event);
+          });
+        } catch (error) {
+          console.error(`Error monitoring pair ${pairAddress}:`, error);
+        }
+      };
 
-      // Set up continuous fetching every 5 seconds
-      fetchInterval = setInterval(fetchHistoricalTrades, 5000);
+      wsProvider.on("error", (error) => {
+        console.error("WebSocket error:", error);
+        wsReconnectTimeout = setTimeout(setupWebSocket, 5000);
+      });
+
+      PAIRS_TO_MONITOR.forEach(monitorPair);
     };
 
-    initialize();
+    // Initialize
+    setupWebSocket();
+    fetchHistoricalTrades();
+
+    // Reduced polling frequency
+    const fetchInterval = setInterval(fetchHistoricalTrades, FETCH_INTERVAL);
 
     return () => {
       mounted = false;
+      if (processingTimeout) clearTimeout(processingTimeout);
+      if (wsReconnectTimeout) clearTimeout(wsReconnectTimeout);
+      if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+      clearInterval(fetchInterval);
       wsProvider.removeAllListeners();
-      if (fetchInterval) clearInterval(fetchInterval);
-      setProcessedTxHashes(new Set());
+      processedTxHashes.current.clear();
     };
-  }, [lastFetchedBlock, processedTxHashes]);
+  }, [processTrades]);
 
   const handleTestFetch = async () => {
     await testFetchEvents(

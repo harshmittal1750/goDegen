@@ -1,4 +1,5 @@
 import { PairInfo } from "./types";
+import { AI_TRADER_ABI, PORTFOLIO_MANAGER_ABI, AI_ORACLE_ABI } from "./abis";
 
 export const FACTORY_ABI = [
   "event PairCreated(address indexed token0, address indexed token1, address pair, uint)",
@@ -19,8 +20,8 @@ export const PAIR_ABI = [
 ] as const;
 
 export const TOKENS = {
-  AERO: "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
-  USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  USDC: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+  AERO: "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
 } as const;
 
 export const PAIRS_TO_MONITOR: PairInfo[] = [
@@ -46,3 +47,38 @@ export const CHAIN_CONFIG = {
   httpRpcUrl: process.env.NEXT_PUBLIC_HTTP_RPC_URL,
   chainId: 8453,
 } as const;
+
+// export const PORTFOLIO_MANAGER_ABI = [
+//   "function createPortfolio(uint256 _riskLevel) external",
+//   "function deposit(address _token, uint256 _amount) external",
+//   "function withdraw(address _token, uint256 _amount) external",
+//   "function userPortfolios(address user) external view returns (uint256 totalValue, uint256 riskLevel, bool isActive)",
+//   "event PortfolioCreated(address indexed user, uint256 riskLevel)",
+//   "event TradeExecuted(address indexed user, address indexed tokenIn, address indexed tokenOut, uint256 amount)",
+//   "function approvedTokens(address token) external view returns (bool)",
+//   "function addToken(address _token) external",
+//   "function removeToken(address _token) external",
+// ] as const;
+
+// export const AI_ORACLE_ABI = [
+//   "function getPrediction(address _token) external view returns (uint256 confidence, int256 priceDirection, uint256 timestamp, bool isHoneypot, uint256 riskScore)",
+//   "event PredictionUpdated(address indexed token, uint256 confidence, int256 priceDirection, bool isHoneypot, uint256 riskScore)",
+// ] as const;
+
+export const CONTRACT_ADDRESSES = {
+  portfolioManager: "0x3B92c3844Bcc4E9b95b559e39Def9AC4a2a7D4c3",
+  aiTrader: "0x1B8867bb3738b66C16753013CE4277340Ae9b5FF",
+  aiOracle: "0x8D3A0ab5b2bc6a4640DeE2D19dA20c539e5afE7A",
+} as const;
+
+export const ERC20_ABI = [
+  "function approve(address spender, uint256 amount) external returns (bool)",
+  "function allowance(address owner, address spender) external view returns (uint256)",
+  "function balanceOf(address account) external view returns (uint256)",
+  "function decimals() external view returns (uint8)",
+] as const;
+
+export type Token = keyof typeof TOKENS;
+
+// Re-export ABIs
+export { AI_TRADER_ABI, PORTFOLIO_MANAGER_ABI, AI_ORACLE_ABI };
