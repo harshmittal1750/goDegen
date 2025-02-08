@@ -18,6 +18,16 @@ interface IERC20 {
     function balanceOf(address account) external view returns (uint256);
 }
 
+interface IAI_Trader {
+    function executeTrade(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        address recipient,
+        bytes calldata data
+    ) external returns (uint256 amountOut);
+}
+
 contract PortfolioManager {
     struct Portfolio {
         uint256 totalValue;
@@ -95,11 +105,19 @@ contract PortfolioManager {
             "Insufficient balance"
         );
 
-        // Execute trade logic here
+        // Approve AI_Trader to spend tokens
+        IERC20(_tokenIn).approve(aiTrader, _amount);
+
+        // Execute trade through AI_Trader
         portfolio.tokenBalances[_tokenIn] -= _amount;
-        // Calculate received amount based on actual trade
-        uint256 receivedAmount = _amount; // This should be actual received amount
-        portfolio.tokenBalances[_tokenOut] += receivedAmount;
+        uint256 amountReceived = IAI_Trader(aiTrader).executeTrade(
+            _tokenIn,
+            _tokenOut,
+            _amount,
+            address(this),
+            ""
+        );
+        portfolio.tokenBalances[_tokenOut] += amountReceived;
 
         emit TradeExecuted(_user, _tokenIn, _tokenOut, _amount);
     }
@@ -121,5 +139,13 @@ contract PortfolioManager {
 
         userPortfolios[msg.sender].tokenBalances[_token] -= _amount;
         IERC20(_token).transfer(msg.sender, _amount);
+    }
+
+    function getTokenBalance(
+        address _user,
+        address _token
+    ) external view returns (uint256) {
+        require(userPortfolios[_user].isActive, "No active portfolio");
+        return userPortfolios[_user].tokenBalances[_token];
     }
 }

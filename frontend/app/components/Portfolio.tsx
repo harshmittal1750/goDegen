@@ -15,6 +15,7 @@ interface PortfolioData {
   totalValue: number;
   riskLevel: number;
   isActive: boolean;
+  usdcBalance?: string;
   predictions: {
     confidence: number;
     priceDirection: number;
@@ -39,6 +40,7 @@ export function Portfolio() {
       try {
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
+        const userAddress = await signer.getAddress();
 
         const portfolioContract = new ethers.Contract(
           CONTRACT_ADDRESSES.portfolioManager,
@@ -53,10 +55,19 @@ export function Portfolio() {
         );
 
         // Get portfolio data
-        const userAddress = await signer.getAddress();
         const portfolioData = await portfolioContract.userPortfolios(
           userAddress
         );
+
+        // Get USDC balance
+        let usdcBalance = "0";
+        if (portfolioData.isActive) {
+          const balance = await portfolioContract.getTokenBalance(
+            userAddress,
+            TOKENS.USDC
+          );
+          usdcBalance = ethers.formatUnits(balance, 6); // USDC has 6 decimals
+        }
 
         // Get AI predictions for the selected token
         const predictions = await oracleContract.getPrediction(selectedToken);
@@ -65,6 +76,7 @@ export function Portfolio() {
           totalValue: Number(portfolioData.totalValue),
           riskLevel: Number(portfolioData.riskLevel),
           isActive: portfolioData.isActive,
+          usdcBalance,
           predictions: {
             confidence: Number(predictions.confidence),
             priceDirection: Number(predictions.priceDirection),
@@ -449,7 +461,22 @@ export function Portfolio() {
             </div>
           </div>
 
-          <TradingInterface />
+          <div className="p-6 rounded-lg shadow-md">
+            <h3 className="text-xl font-semibold mb-4">Portfolio Dashboard</h3>
+
+            {portfolio?.isActive && (
+              <div className="mb-4 p-4 bg-blue-50 rounded-lg">
+                <h4 className="text-lg font-semibold mb-2">
+                  Portfolio Balance
+                </h4>
+                <p className="text-2xl font-bold text-blue-600">
+                  {portfolio.usdcBalance} USDC
+                </p>
+              </div>
+            )}
+
+            <TradingInterface />
+          </div>
         </div>
       )}
     </section>
