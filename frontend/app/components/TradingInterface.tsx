@@ -2,8 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
+import { Eip1193Provider } from "ethers";
 import { CONTRACT_ADDRESSES, TOKENS } from "../lib/constants";
-import { AI_ORACLE_ABI, PORTFOLIO_MANAGER_ABI } from "../lib/abis";
+import {
+  AI_ORACLE_ABI,
+  PORTFOLIO_MANAGER_ABI,
+  AI_TRADER_ABI,
+} from "../lib/abis";
 
 interface TradePrediction {
   confidence: number;
@@ -56,6 +61,7 @@ export function TradingInterface() {
   const TRADE_COOLDOWN = 5 * 60 * 1000; // 5 minutes in milliseconds
   const [newTokenAddress, setNewTokenAddress] = useState("");
   const [addingToken, setAddingToken] = useState(false);
+  const [degenMode, setDegenMode] = useState<boolean>(false);
 
   const addLog = (
     message: string,
@@ -136,6 +142,16 @@ export function TradingInterface() {
     const tokenSettings = settings[tokenAddress];
     if (!prediction || !tokenSettings || !tokenSettings.enabled) return;
 
+    // Add validation for trade amount
+    if (
+      !tokenSettings.tradeAmount ||
+      parseFloat(tokenSettings.tradeAmount) <= 0
+    ) {
+      setError("Please enter a valid trade amount");
+      addLog("Trade failed: Invalid trade amount", "error", tokenAddress);
+      return;
+    }
+
     try {
       setLoading((prev) => ({ ...prev, [tokenAddress]: true }));
       setError(null);
@@ -143,66 +159,63 @@ export function TradingInterface() {
       if (!window.ethereum) {
         throw new Error("No ethereum provider found");
       }
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const userAddress = await signer.getAddress();
 
-      addLog("Checking portfolio status...", "info", tokenAddress);
-      const portfolioManager = new ethers.Contract(
-        CONTRACT_ADDRESSES.portfolioManager,
-        PORTFOLIO_MANAGER_ABI,
-        signer
-      );
+      // Only check conditions if DEGEN MODE is off
+      if (!degenMode) {
+        // Validate trade conditions
+        if (prediction.confidence < tokenSettings.minConfidence) {
+          const message = `Confidence too low (${prediction.confidence}% < ${tokenSettings.minConfidence}%) - Waiting for better conditions`;
+          addLog(message, "warning", tokenAddress);
+          return;
+        }
 
-      const portfolio = await portfolioManager.userPortfolios(userAddress);
-      if (!portfolio.isActive) {
-        const message = "No active portfolio found";
-        setError(message);
-        addLog(message, "error", tokenAddress);
-        return;
-      }
+        if (prediction.riskScore > tokenSettings.maxRiskScore) {
+          const message = `Risk score too high (${prediction.riskScore} > ${tokenSettings.maxRiskScore}) - Waiting for safer conditions`;
+          addLog(message, "warning", tokenAddress);
+          return;
+        }
 
-      addLog("Validating token approvals...", "info", tokenAddress);
-      const isUSDCApproved = await portfolioManager.approvedTokens(TOKENS.USDC);
-      const isTargetApproved = await portfolioManager.approvedTokens(
-        tokenAddress
-      );
-      if (!isUSDCApproved || !isTargetApproved) {
-        const message = "One or more tokens not approved for trading";
-        setError(message);
-        addLog(message, "error", tokenAddress);
-        return;
-      }
+        if (prediction.isHoneypot) {
+          const message =
+            "Target token is potential honeypot - Trade cancelled";
+          addLog(message, "error", tokenAddress);
+          return;
+        }
 
-      // Validate trade conditions
-      if (prediction.confidence < tokenSettings.minConfidence) {
-        const message = `Confidence too low (${prediction.confidence}% < ${tokenSettings.minConfidence}%) - Waiting for better conditions`;
-        addLog(message, "warning", tokenAddress);
-        return;
-      }
-
-      if (prediction.riskScore > tokenSettings.maxRiskScore) {
-        const message = `Risk score too high (${prediction.riskScore} > ${tokenSettings.maxRiskScore}) - Waiting for safer conditions`;
-        addLog(message, "warning", tokenAddress);
-        return;
-      }
-
-      if (prediction.isHoneypot) {
-        const message = "Target token is potential honeypot - Trade cancelled";
-        addLog(message, "error", tokenAddress);
-        return;
-      }
-
-      const lastTradeTime = lastTradeTimes[tokenAddress] || 0;
-      if (Date.now() - lastTradeTime < TRADE_COOLDOWN) {
-        const remainingTime = Math.ceil(
-          (TRADE_COOLDOWN - (Date.now() - lastTradeTime)) / 1000
-        );
-        const message = `Cooldown period active for ${getTokenSymbol(
-          tokenAddress
-        )} - Please wait ${remainingTime} seconds`;
-        addLog(message, "warning", tokenAddress);
-        return;
+        const lastTradeTime = lastTradeTimes[tokenAddress] || 0;
+        if (Date.now() - lastTradeTime < TRADE_COOLDOWN) {
+          const remainingTime = Math.ceil(
+            (TRADE_COOLDOWN - (Date.now() - lastTradeTime)) / 1000
+          );
+          const message = `Cooldown period active for ${getTokenSymbol(
+            tokenAddress
+          )} - Please wait ${remainingTime} seconds`;
+          addLog(message, "warning", tokenAddress);
+          return;
+        }
+      } else {
+        // Log warnings in DEGEN MODE but continue with trade
+        if (prediction.confidence < tokenSettings.minConfidence) {
+          addLog(
+            `DEGEN MODE: Ignoring low confidence (${prediction.confidence}%)`,
+            "warning",
+            tokenAddress
+          );
+        }
+        if (prediction.riskScore > tokenSettings.maxRiskScore) {
+          addLog(
+            `DEGEN MODE: Ignoring high risk score (${prediction.riskScore})`,
+            "warning",
+            tokenAddress
+          );
+        }
+        if (prediction.isHoneypot) {
+          addLog(
+            "DEGEN MODE: Ignoring honeypot warning",
+            "warning",
+            tokenAddress
+          );
+        }
       }
 
       // Execute trade
@@ -213,12 +226,52 @@ export function TradingInterface() {
         "info",
         tokenAddress
       );
+
       const amount = ethers.parseUnits(tokenSettings.tradeAmount, 6);
-      const tx = await portfolioManager.executeAITrade(
+      const provider = new ethers.BrowserProvider(
+        window.ethereum as Eip1193Provider
+      );
+      const signer = await provider.getSigner();
+      const userAddress = await signer.getAddress();
+
+      // First approve USDC spending if needed
+      const usdcContract = new ethers.Contract(
+        TOKENS.USDC,
+        [
+          "function approve(address spender, uint256 amount) external returns (bool)",
+          "function allowance(address owner, address spender) external view returns (uint256)",
+        ],
+        signer
+      );
+
+      const allowance = await usdcContract.allowance(
         userAddress,
+        CONTRACT_ADDRESSES.aiTrader
+      );
+
+      if (allowance < amount) {
+        addLog("Approving USDC spending...", "info", tokenAddress);
+        const approveTx = await usdcContract.approve(
+          CONTRACT_ADDRESSES.aiTrader,
+          ethers.MaxUint256
+        );
+        await approveTx.wait();
+        addLog("USDC approved for spending", "success", tokenAddress);
+      }
+
+      // Execute trade through GoDegen (AI_Trader) contract
+      const goDegenContract = new ethers.Contract(
+        CONTRACT_ADDRESSES.aiTrader,
+        AI_TRADER_ABI,
+        signer
+      );
+
+      addLog("Executing trade...", "info", tokenAddress);
+      const tx = await goDegenContract.executeManualTrade(
         TOKENS.USDC,
         tokenAddress,
-        amount
+        amount,
+        userAddress
       );
 
       addLog("Waiting for transaction confirmation...", "info", tokenAddress);
@@ -233,7 +286,7 @@ export function TradingInterface() {
         ...prev,
         [tokenAddress]: Date.now(),
       }));
-    } catch (error: unknown) {
+    } catch (error) {
       console.error("Error executing trade:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to execute trade";
@@ -269,6 +322,70 @@ export function TradingInterface() {
     return ethers.isAddress(address);
   };
 
+  // Function to check and approve tokens for trading
+  const checkAndApproveTokens = async (tokenAddress: string) => {
+    try {
+      if (!window.ethereum) {
+        throw new Error("Please install MetaMask!");
+      }
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const userAddress = await signer.getAddress();
+
+      // Check if token is approved in PortfolioManager
+      const portfolioContract = new ethers.Contract(
+        CONTRACT_ADDRESSES.portfolioManager,
+        PORTFOLIO_MANAGER_ABI,
+        signer
+      );
+
+      const isTokenApproved = await portfolioContract.approvedTokens(
+        tokenAddress
+      );
+      if (!isTokenApproved) {
+        addLog(
+          "Token not approved in PortfolioManager. Requesting approval...",
+          "info"
+        );
+        const tx = await portfolioContract.addToken(tokenAddress);
+        await tx.wait();
+        addLog("Token approved in PortfolioManager", "success");
+      }
+
+      // Get token contract
+      const tokenContract = new ethers.Contract(
+        tokenAddress,
+        [
+          "function approve(address spender, uint256 amount) external returns (bool)",
+          "function allowance(address owner, address spender) external view returns (uint256)",
+        ],
+        signer
+      );
+
+      // Check allowance for AI_Trader
+      const allowance = await tokenContract.allowance(
+        userAddress,
+        CONTRACT_ADDRESSES.aiTrader
+      );
+      if (allowance.toString() === "0") {
+        addLog("Approving token for AI_Trader...", "info");
+        const approveTx = await tokenContract.approve(
+          CONTRACT_ADDRESSES.aiTrader,
+          ethers.MaxUint256 // Approve maximum amount
+        );
+        await approveTx.wait();
+        addLog("Token approved for AI_Trader", "success");
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error approving tokens:", error);
+      addLog("Failed to approve tokens: " + (error as Error).message, "error");
+      return false;
+    }
+  };
+
   // Function to add a new token
   const addToken = async () => {
     try {
@@ -288,6 +405,12 @@ export function TradingInterface() {
 
       if (!window.ethereum) {
         throw new Error("No ethereum provider found");
+      }
+
+      // First approve the token
+      const isApproved = await checkAndApproveTokens(newTokenAddress);
+      if (!isApproved) {
+        throw new Error("Failed to approve token");
       }
 
       // Try to get token info
@@ -346,6 +469,25 @@ export function TradingInterface() {
     <div className="p-6 rounded-lg shadow-md">
       <h3 className="text-xl font-semibold mb-4">Manual Trading Dashboard</h3>
 
+      {/* Add DEGEN MODE toggle at the top */}
+      <div className="mb-6 flex items-center justify-between p-4 border rounded-lg bg-red-50">
+        <div>
+          <h4 className="text-lg font-semibold text-red-600">DEGEN MODE</h4>
+          <p className="text-sm text-red-500">
+            Warning: Bypasses all safety checks!
+          </p>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            className="sr-only peer"
+            checked={degenMode}
+            onChange={(e) => setDegenMode(e.target.checked)}
+          />
+          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+        </label>
+      </div>
+
       <div className="grid gap-6">
         {/* Token Management */}
         <div className="p-4 border rounded-lg">
@@ -363,7 +505,7 @@ export function TradingInterface() {
             <button
               onClick={addToken}
               disabled={!newTokenAddress || addingToken}
-              className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
             >
               {addingToken ? "Adding..." : "Add Token"}
             </button>
@@ -378,7 +520,7 @@ export function TradingInterface() {
                 {Object.entries(settings).map(([address]) => (
                   <div
                     key={address}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                    className="flex items-center justify-between p-2 rounded"
                   >
                     <div>
                       <span className="font-medium">
@@ -402,7 +544,7 @@ export function TradingInterface() {
           </div>
         </div>
 
-        {/* Token Settings */}
+        {/* Token Settings and Trading */}
         {Object.entries(settings).map(([tokenAddress, tokenSettings]) => (
           <div key={tokenAddress} className="p-4 border rounded-lg">
             <div className="flex items-center justify-between mb-4">
@@ -428,145 +570,145 @@ export function TradingInterface() {
               </label>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Minimum Confidence (%)
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={tokenSettings.minConfidence}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      [tokenAddress]: {
-                        ...prev[tokenAddress],
-                        minConfidence: Number(e.target.value),
-                      },
-                    }))
-                  }
-                  className="w-full"
-                  disabled={!tokenSettings.enabled}
-                />
-                <span className="text-sm">{tokenSettings.minConfidence}%</span>
+            {/* AI Predictions */}
+            {predictions[tokenAddress] && (
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <p className="text-sm text-gray-500">Confidence</p>
+                  <p className="text-lg font-semibold">
+                    {predictions[tokenAddress].confidence}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Risk Score</p>
+                  <p className="text-lg font-semibold">
+                    {predictions[tokenAddress].riskScore}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Price Direction</p>
+                  <p
+                    className={`text-lg font-semibold ${
+                      predictions[tokenAddress].priceDirection > 0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    {predictions[tokenAddress].priceDirection > 0
+                      ? "Up"
+                      : "Down"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Honeypot Risk</p>
+                  <p
+                    className={`text-lg font-semibold ${
+                      predictions[tokenAddress].isHoneypot
+                        ? "text-red-600"
+                        : "text-green-600"
+                    }`}
+                  >
+                    {predictions[tokenAddress].isHoneypot
+                      ? "High Risk"
+                      : "Safe"}
+                  </p>
+                </div>
               </div>
+            )}
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Maximum Risk Score
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={tokenSettings.maxRiskScore}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      [tokenAddress]: {
-                        ...prev[tokenAddress],
-                        maxRiskScore: Number(e.target.value),
-                      },
-                    }))
-                  }
-                  className="w-full"
-                  disabled={!tokenSettings.enabled}
-                />
-                <span className="text-sm">{tokenSettings.maxRiskScore}</span>
-              </div>
+            {/* Add Trade Amount Input */}
+            <div className="mb-4">
+              <label className="block text-sm text-gray-500 mb-1">
+                Trade Amount (USDC)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.000001"
+                value={tokenSettings.tradeAmount}
+                onChange={(e) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    [tokenAddress]: {
+                      ...prev[tokenAddress],
+                      tradeAmount: e.target.value,
+                    },
+                  }))
+                }
+                className="w-full p-2 border rounded mb-2"
+                placeholder="Enter amount in USDC"
+              />
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Trade Amount (USDC)
-                </label>
-                <input
-                  type="number"
-                  value={tokenSettings.tradeAmount}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      [tokenAddress]: {
-                        ...prev[tokenAddress],
-                        tradeAmount: e.target.value,
-                      },
-                    }))
-                  }
-                  className="w-full p-2 border rounded"
-                  placeholder="Enter amount"
-                  disabled={!tokenSettings.enabled}
-                />
-              </div>
-
-              {/* Prediction Display */}
-              {predictions[tokenAddress] && (
-                <div className="grid grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <p className="text-sm text-gray-500">AI Confidence</p>
-                    <p className="text-lg font-semibold">
-                      {predictions[tokenAddress]?.confidence ?? 0}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Price Direction</p>
-                    <div
-                      className={`text-lg font-semibold ${
-                        predictions[tokenAddress]?.priceDirection
-                          ? predictions[tokenAddress]!.priceDirection > 0
-                            ? "text-green-600"
-                            : predictions[tokenAddress]!.priceDirection < 0
-                            ? "text-red-600"
-                            : "text-gray-600"
-                          : "text-gray-600"
-                      }`}
-                    >
-                      {predictions[tokenAddress]?.priceDirection
+            {/* Prediction Display */}
+            {predictions[tokenAddress] && (
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <div>
+                  <p className="text-sm text-gray-500">AI Confidence</p>
+                  <p className="text-lg font-semibold">
+                    {predictions[tokenAddress]?.confidence ?? 0}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Price Direction</p>
+                  <div
+                    className={`text-lg font-semibold ${
+                      predictions[tokenAddress]?.priceDirection
                         ? predictions[tokenAddress]!.priceDirection > 0
-                          ? "↑ Buy Signal"
+                          ? "text-green-600"
                           : predictions[tokenAddress]!.priceDirection < 0
-                          ? "↓ Sell Signal"
-                          : "→ Hold"
-                        : "→ Hold"}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Risk Score</p>
-                    <p className="text-lg font-semibold">
-                      {predictions[tokenAddress]?.riskScore ?? 0}/100
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Honeypot Risk</p>
-                    <p
-                      className={`text-lg font-semibold ${
-                        predictions[tokenAddress]?.isHoneypot
                           ? "text-red-600"
-                          : "text-green-600"
-                      }`}
-                    >
-                      {predictions[tokenAddress]?.isHoneypot
-                        ? "High Risk"
-                        : "Safe"}
-                    </p>
+                          : "text-gray-600"
+                        : "text-gray-600"
+                    }`}
+                  >
+                    {predictions[tokenAddress]?.priceDirection
+                      ? predictions[tokenAddress]!.priceDirection > 0
+                        ? "↑ Buy Signal"
+                        : predictions[tokenAddress]!.priceDirection < 0
+                        ? "↓ Sell Signal"
+                        : "→ Hold"
+                      : "→ Hold"}
                   </div>
                 </div>
-              )}
+                <div>
+                  <p className="text-sm text-gray-500">Risk Score</p>
+                  <p className="text-lg font-semibold">
+                    {predictions[tokenAddress]?.riskScore ?? 0}/100
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Honeypot Risk</p>
+                  <p
+                    className={`text-lg font-semibold ${
+                      predictions[tokenAddress]?.isHoneypot
+                        ? "text-red-600"
+                        : "text-green-600"
+                    }`}
+                  >
+                    {predictions[tokenAddress]?.isHoneypot
+                      ? "High Risk"
+                      : "Safe"}
+                  </p>
+                </div>
+              </div>
+            )}
 
-              <button
-                onClick={() => executeTrade(tokenAddress)}
-                className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-                disabled={
-                  loading[tokenAddress] ||
-                  !tokenSettings.tradeAmount ||
-                  !tokenSettings.enabled
-                }
-              >
-                {loading[tokenAddress]
-                  ? "Processing..."
-                  : `Execute Manual Trade (${getTokenSymbol(tokenAddress)})`}
-              </button>
-            </div>
+            <button
+              onClick={() => executeTrade(tokenAddress)}
+              className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+              disabled={
+                loading[tokenAddress] ||
+                !tokenSettings.enabled ||
+                !tokenSettings.tradeAmount
+              }
+            >
+              {loading[tokenAddress]
+                ? "Processing..."
+                : !tokenSettings.tradeAmount
+                ? "Enter Trade Amount"
+                : `Execute Manual Trade (${getTokenSymbol(tokenAddress)})`}
+            </button>
           </div>
         ))}
 

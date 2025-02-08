@@ -251,7 +251,7 @@ export function AutoTrading() {
   }
 
   return (
-    <div className="p-6 rounded-lg shadow-md bg-white">
+    <div className="p-6 rounded-lg shadow-md ">
       <h3 className="text-xl font-semibold mb-4">Auto-Trading Settings</h3>
 
       <div className="space-y-4">

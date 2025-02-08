@@ -22,14 +22,14 @@ export default function Home() {
             <Portfolio />
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8">
+          {/* <div className="grid md:grid-cols-2 gap-8">
             <div className="terminal-card">
               <TradeMonitor />
             </div>
             <div className="terminal-card">
               <BlockMonitor />
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
     </main>

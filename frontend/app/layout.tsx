@@ -40,8 +40,8 @@ const stalinistOne = Stalinist_One({
 });
 
 export const metadata: Metadata = {
-  title: "Blockchain Data Dashboard",
-  description: "Real-time blockchain data monitoring",
+  title: "GoDegen AI Trading",
+  description: "GoDegen AI Trading",
 };
 
 export default function RootLayout({

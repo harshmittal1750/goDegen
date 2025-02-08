@@ -140,6 +140,65 @@ contract GoDegen {
 
         return amountOut;
     }
+
+    function executeManualTrade(
+        address _tokenIn,
+        address _tokenOut,
+        uint256 _amountIn,
+        address _recipient
+    ) external returns (uint256 amountOut) {
+        require(
+            whitelistedTokens[_tokenIn] && whitelistedTokens[_tokenOut],
+            "Tokens not whitelisted"
+        );
+        require(_amountIn >= MIN_TRADE_AMOUNT, "Amount too low");
+
+        // Find best pool and fee
+        (address pool, uint24 fee) = findBestPool(_tokenIn, _tokenOut);
+
+        // Get quote for minimum amount out
+        (uint256 quotedAmount, , , ) = quoter.quoteExactInputSingle(
+            _tokenIn,
+            _tokenOut,
+            fee,
+            _amountIn,
+            0
+        );
+
+        uint256 minAmountOut = (quotedAmount * (10000 - MAX_SLIPPAGE)) / 10000;
+
+        // Transfer tokens from sender
+        IERC20(_tokenIn).transferFrom(msg.sender, address(this), _amountIn);
+
+        // Approve router
+        IERC20(_tokenIn).approve(address(swapRouter), _amountIn);
+
+        // Execute swap
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
+            .ExactInputSingleParams({
+                tokenIn: _tokenIn,
+                tokenOut: _tokenOut,
+                fee: fee,
+                recipient: _recipient,
+                deadline: block.timestamp + DEADLINE_EXTENSION,
+                amountIn: _amountIn,
+                amountOutMinimum: minAmountOut,
+                sqrtPriceLimitX96: 0
+            });
+
+        amountOut = swapRouter.exactInputSingle(params);
+
+        emit TradeExecuted(
+            _tokenIn,
+            _tokenOut,
+            _amountIn,
+            amountOut,
+            _recipient,
+            fee
+        );
+
+        return amountOut;
+    }
 }
 
 contract HoneypotChecker {
