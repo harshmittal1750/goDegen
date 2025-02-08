@@ -166,6 +166,40 @@
 						"internalType": "address",
 						"name": "_recipient",
 						"type": "address"
+					}
+				],
+				"name": "executeManualTrade",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "amountOut",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_tokenIn",
+						"type": "address"
+					},
+					{
+						"internalType": "address",
+						"name": "_tokenOut",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_amountIn",
+						"type": "uint256"
+					},
+					{
+						"internalType": "address",
+						"name": "_recipient",
+						"type": "address"
 					},
 					{
 						"internalType": "bytes",
@@ -331,11 +365,11 @@
 	},
 	"sources": {
 		"contracts/GoDegen.sol": {
-			"keccak256": "0xa66a793a2ae884d9542b1b5a1acd8cd708449b93addf306f293d7d4b2a4efcbb",
+			"keccak256": "0x1a8cd9d14628b0988830cc0d376a3c44384653276edddc17766010fdcc7164c0",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://5e4d92e43fb8063f153cb4331ad55dc2df5d32a0d255f7823d5e3bd600f2f8e6",
-				"dweb:/ipfs/QmeQu5BFyat244yvv8W9K1K1hw8HkqdbhGCqMawkF9xjJm"
+				"bzz-raw://af32c089c08af66155f49cff733c34159c56468bf2c2a5dfbd3aae2b4a8a5c0f",
+				"dweb:/ipfs/Qma4tk5wcnBdbpbScXVomQ4i94tVdw946qSedXjE1CNdQE"
 			]
 		},
 		"contracts/Interfaces.sol": {

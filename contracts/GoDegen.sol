@@ -16,8 +16,8 @@ contract GoDegen {
 
     uint24[] public SUPPORTED_FEES = [100, 500, 3000, 10000];
     uint256 public constant DEADLINE_EXTENSION = 20 minutes;
-    uint256 public constant MAX_SLIPPAGE = 200; // 2%
-    uint256 public constant MIN_TRADE_AMOUNT = 1e6; // 1 USDC
+    uint256 public constant MAX_SLIPPAGE = 200; // 50%
+    uint256 public constant MIN_TRADE_AMOUNT = 1e4; // 0.01 USDC
 
     mapping(address => bool) public whitelistedTokens;
 
