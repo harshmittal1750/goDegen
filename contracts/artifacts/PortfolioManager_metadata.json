@@ -27,6 +27,43 @@
 					},
 					{
 						"indexed": false,
+						"internalType": "bool",
+						"name": "enabled",
+						"type": "bool"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "minConfidence",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "maxRiskScore",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "tradeAmount",
+						"type": "uint256"
+					}
+				],
+				"name": "AutoTradingUpdated",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "user",
+						"type": "address"
+					},
+					{
+						"indexed": false,
 						"internalType": "uint256",
 						"name": "riskLevel",
 						"type": "uint256"
@@ -202,6 +239,40 @@
 						"internalType": "address",
 						"name": "_user",
 						"type": "address"
+					}
+				],
+				"name": "getAutoTradingSettings",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "enabled",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "minConfidence",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "maxRiskScore",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "tradeAmount",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_user",
+						"type": "address"
 					},
 					{
 						"internalType": "address",
@@ -249,6 +320,34 @@
 			{
 				"inputs": [
 					{
+						"internalType": "bool",
+						"name": "_enabled",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_minConfidence",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_maxRiskScore",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_tradeAmount",
+						"type": "uint256"
+					}
+				],
+				"name": "updateAutoTrading",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
 						"internalType": "address",
 						"name": "",
 						"type": "address"
@@ -270,6 +369,26 @@
 						"internalType": "bool",
 						"name": "isActive",
 						"type": "bool"
+					},
+					{
+						"internalType": "bool",
+						"name": "autoTrading",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "minConfidence",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "maxRiskScore",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "tradeAmount",
+						"type": "uint256"
 					}
 				],
 				"stateMutability": "view",
@@ -322,11 +441,11 @@
 	},
 	"sources": {
 		"contracts/PortfolioManager.sol": {
-			"keccak256": "0x461173316fae45ee0a8226f2b7a3d87d62f7561476d25276a9f8f7e3f25224ab",
+			"keccak256": "0x11c3c19e18e2a1249df0b5b2a8ea0d01420c10dc5c17d1372d0aa6e87cabf7fa",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://6b118e56ac70b9d4bff5122cb9d321a56cb620434f912327e94f63ab016c5b1a",
-				"dweb:/ipfs/QmUzj5ysKJbCJqrNwC216xVzH1p9SwjAR1p8DzV4SaYhFn"
+				"bzz-raw://eff3a8eb1b144a8cbe2bf0c054a3df25f9578daaa150e6772259209e7b5c967a",
+				"dweb:/ipfs/QmR9dvkr8UYopaoufsN3Mcruada1KLcMzUMyBWRbgFRL87"
 			]
 		}
 	},
