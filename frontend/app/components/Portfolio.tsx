@@ -294,16 +294,19 @@ export function Portfolio() {
 
   return (
     <section className="space-y-6">
-      <h2 className="text-2xl font-semibold">AI Portfolio Manager</h2>
-
-      <NetworkManager />
+      <div className="flex items-center justify-between">
+        <h2 className="gradient-text text-2xl font-bold">
+          AI Portfolio Manager
+        </h2>
+        <NetworkManager />
+      </div>
 
       {isOwner && (
-        <div className="p-4 bg-gray-100 rounded-lg">
-          <h3 className="text-lg font-semibold mb-2">Admin Panel</h3>
+        <div className="terminal-card">
+          <h3 className="terminal-header">Admin Panel</h3>
           <button
             onClick={handleApproveToken}
-            className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600"
+            className="btn-primary"
             disabled={isDepositing}
           >
             {isDepositing ? "Approving..." : "Approve USDC"}
@@ -312,10 +315,10 @@ export function Portfolio() {
       )}
 
       {loading ? (
-        <div>Loading portfolio data...</div>
+        <div className="text-primary">Loading portfolio data...</div>
       ) : !portfolio?.isActive ? (
-        <div className="p-6 rounded-lg shadow-md">
-          <h3 className="text-xl font-semibold mb-4">Create Portfolio</h3>
+        <div className="terminal-card">
+          <h3 className="terminal-header">Create Portfolio</h3>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2">
@@ -331,52 +334,49 @@ export function Portfolio() {
               />
               <span className="text-sm">{riskLevel}</span>
             </div>
-            <button
-              onClick={createPortfolio}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
+            <button onClick={createPortfolio} className="btn-primary">
               Create Portfolio
             </button>
           </div>
         </div>
       ) : (
         <div className="grid gap-6">
-          <div className="p-6 rounded-lg shadow-md">
-            <h3 className="text-xl font-semibold mb-4">Portfolio Overview</h3>
+          <div className="stats-card">
+            <h3 className="terminal-header">Portfolio Overview</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm text-gray-500">Total Value</p>
-                <p className="text-lg font-semibold">
+                <p className="text-sm text-gray-400">Total Value</p>
+                <p className="text-lg font-semibold gradient-text">
                   ${portfolio.totalValue.toFixed(2)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Risk Level</p>
-                <p className="text-lg font-semibold">
+                <p className="text-sm text-gray-400">Risk Level</p>
+                <p className="text-lg font-semibold gradient-text">
                   {portfolio.riskLevel}/10
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="p-6 rounded-lg shadow-md">
-            <h3 className="text-xl font-semibold mb-4">AI Predictions</h3>
+          <div className="terminal-card">
+            <h3 className="terminal-header">AI Predictions</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm text-gray-500">Confidence</p>
-                <p className="text-lg font-semibold">
+                <p className="text-sm text-gray-400">Confidence</p>
+                <p className="text-lg font-semibold gradient-text">
                   {portfolio.predictions.confidence}%
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Price Direction</p>
+                <p className="text-sm text-gray-400">Price Direction</p>
                 <p
                   className={`text-lg font-semibold ${
                     portfolio.predictions.priceDirection > 0
-                      ? "text-green-600"
+                      ? "text-green-400"
                       : portfolio.predictions.priceDirection < 0
-                      ? "text-red-600"
-                      : "text-gray-600"
+                      ? "text-red-400"
+                      : "text-gray-400"
                   }`}
                 >
                   {portfolio.predictions.priceDirection > 0
@@ -387,18 +387,18 @@ export function Portfolio() {
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Risk Score</p>
-                <p className="text-lg font-semibold">
+                <p className="text-sm text-gray-400">Risk Score</p>
+                <p className="text-lg font-semibold gradient-text">
                   {portfolio.predictions.riskScore}/100
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Honeypot Risk</p>
+                <p className="text-sm text-gray-400">Honeypot Risk</p>
                 <p
                   className={`text-lg font-semibold ${
                     portfolio.predictions.isHoneypot
-                      ? "text-red-600"
-                      : "text-green-600"
+                      ? "text-red-400"
+                      : "text-green-400"
                   }`}
                 >
                   {portfolio.predictions.isHoneypot ? "High Risk" : "Low Risk"}
@@ -407,10 +407,10 @@ export function Portfolio() {
             </div>
           </div>
 
-          <div className="p-6 rounded-lg shadow-md">
-            <h3 className="text-xl font-semibold mb-4">Deposit Funds</h3>
+          <div className="terminal-card">
+            <h3 className="terminal-header">Deposit Funds</h3>
             {errorMessage && (
-              <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
+              <div className="mb-4 p-3 bg-red-900/20 text-red-400 rounded border border-red-800">
                 {errorMessage}
               </div>
             )}
@@ -424,20 +424,17 @@ export function Portfolio() {
                     setDepositAmount(e.target.value);
                     setErrorMessage(null);
                   }}
-                  className="w-full p-2 border rounded"
                   placeholder="Enter amount"
                   disabled={isDepositing}
                 />
               </div>
               <button
                 onClick={handleDeposit}
-                className={`px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed ${
-                  isDepositing ? "cursor-not-allowed" : ""
-                }`}
+                className="btn-primary w-full"
                 disabled={isDepositing || !depositAmount}
               >
                 {isDepositing ? (
-                  <span className="flex items-center gap-2">
+                  <span className="flex items-center justify-center gap-2">
                     <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                       <circle
                         className="opacity-25"
@@ -462,23 +459,24 @@ export function Portfolio() {
             </div>
           </div>
 
-          <div className="p-6 rounded-lg shadow-md">
-            <h3 className="text-xl font-semibold mb-4">Portfolio Dashboard</h3>
+          <div className="terminal-card">
+            <h3 className="terminal-header">Portfolio Dashboard</h3>
 
             {portfolio?.isActive && (
-              <div className="mb-4 p-4 bg-blue-50 rounded-lg">
-                <h4 className="text-lg font-semibold mb-2">
+              <div className="mb-4 p-4 bg-[#0253FF]/10 rounded-lg border border-[#0253FF]/20">
+                <h4 className="text-lg font-semibold mb-2 text-[#0253FF]">
                   Portfolio Balance
                 </h4>
-                <p className="text-2xl font-bold text-blue-600">
+                <p className="text-2xl font-bold gradient-text">
                   {portfolio.usdcBalance} USDC
                 </p>
               </div>
             )}
 
-            <TradingInterface />
+            <div className="trade-card">
+              <TradingInterface />
+            </div>
 
-            {/* Add AutoTrading component */}
             {portfolio?.isActive && (
               <div className="mt-6">
                 <AutoTrading />

@@ -321,6 +321,43 @@ export const PORTFOLIO_MANAGER_ABI = [
       },
       {
         indexed: false,
+        internalType: "bool",
+        name: "enabled",
+        type: "bool",
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "minConfidence",
+        type: "uint256",
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "maxRiskScore",
+        type: "uint256",
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "tradeAmount",
+        type: "uint256",
+      },
+    ],
+    name: "AutoTradingUpdated",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "address",
+        name: "user",
+        type: "address",
+      },
+      {
+        indexed: false,
         internalType: "uint256",
         name: "riskLevel",
         type: "uint256",
@@ -497,6 +534,40 @@ export const PORTFOLIO_MANAGER_ABI = [
         name: "_user",
         type: "address",
       },
+    ],
+    name: "getAutoTradingSettings",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "enabled",
+        type: "bool",
+      },
+      {
+        internalType: "uint256",
+        name: "minConfidence",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "maxRiskScore",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "tradeAmount",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "_user",
+        type: "address",
+      },
       {
         internalType: "address",
         name: "_token",
@@ -543,6 +614,34 @@ export const PORTFOLIO_MANAGER_ABI = [
   {
     inputs: [
       {
+        internalType: "bool",
+        name: "_enabled",
+        type: "bool",
+      },
+      {
+        internalType: "uint256",
+        name: "_minConfidence",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "_maxRiskScore",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "_tradeAmount",
+        type: "uint256",
+      },
+    ],
+    name: "updateAutoTrading",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
         internalType: "address",
         name: "",
         type: "address",
@@ -564,6 +663,26 @@ export const PORTFOLIO_MANAGER_ABI = [
         internalType: "bool",
         name: "isActive",
         type: "bool",
+      },
+      {
+        internalType: "bool",
+        name: "autoTrading",
+        type: "bool",
+      },
+      {
+        internalType: "uint256",
+        name: "minConfidence",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "maxRiskScore",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "tradeAmount",
+        type: "uint256",
       },
     ],
     stateMutability: "view",
