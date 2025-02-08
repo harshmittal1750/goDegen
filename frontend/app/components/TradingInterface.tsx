@@ -136,6 +136,54 @@ export function TradingInterface() {
     }
   };
 
+  const checkPoolLiquidity = async (
+    tokenIn: string,
+    tokenOut: string,
+    amount: string
+  ) => {
+    try {
+      if (!window.ethereum) throw new Error("No ethereum provider found");
+
+      const provider = new ethers.BrowserProvider(
+        window.ethereum as Eip1193Provider
+      );
+      const goDegenContract = new ethers.Contract(
+        CONTRACT_ADDRESSES.aiTrader,
+        AI_TRADER_ABI,
+        provider
+      );
+
+      // First find the best pool
+      const [pool, fee] = await goDegenContract.findBestPool(tokenIn, tokenOut);
+      if (!pool) {
+        throw new Error("No liquidity pool found");
+      }
+
+      // Get quote to check if trade is possible
+      const quoterContract = new ethers.Contract(
+        "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a", // QuoterV2 on Base
+        [
+          "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+        ],
+        provider
+      );
+
+      const amountIn = ethers.parseUnits(amount, 6); // USDC has 6 decimals
+      const [amountOut] = await quoterContract.quoteExactInputSingle(
+        tokenIn,
+        tokenOut,
+        fee,
+        amountIn,
+        0
+      );
+
+      return amountOut > 0;
+    } catch (error) {
+      console.error("Error checking liquidity:", error);
+      return false;
+    }
+  };
+
   const executeTrade = async (tokenAddress: string) => {
     const prediction = predictions[tokenAddress];
     const tokenSettings = settings[tokenAddress];
@@ -157,6 +205,17 @@ export function TradingInterface() {
 
       if (!window.ethereum) {
         throw new Error("No ethereum provider found");
+      }
+
+      // Check liquidity before proceeding
+      const hasLiquidity = await checkPoolLiquidity(
+        TOKENS.USDC,
+        tokenAddress,
+        tokenSettings.tradeAmount
+      );
+
+      if (!hasLiquidity) {
+        throw new Error("Insufficient liquidity in pool");
       }
 
       // Only check conditions if DEGEN MODE is off
@@ -395,17 +454,25 @@ export function TradingInterface() {
   // Function to add a new token
   const addToken = async () => {
     try {
+      console.log("Adding new token:", newTokenAddress);
       if (!isValidAddress(newTokenAddress)) {
-        setError("Invalid token address");
+        const error = "Invalid token address";
+        console.error(error);
+        setError(error);
+        addLog(error, "error");
         return;
       }
 
       setAddingToken(true);
       setError(null);
+      addLog(`Attempting to add token: ${newTokenAddress}`, "info");
 
       // Check if token already exists
       if (settings[newTokenAddress]) {
-        setError("Token already added");
+        const error = "Token already added";
+        console.error(error);
+        setError(error);
+        addLog(error, "error");
         return;
       }
 
@@ -414,6 +481,7 @@ export function TradingInterface() {
       }
 
       // First approve the token
+      addLog("Checking token approval status...", "info");
       const isApproved = await checkAndApproveTokens(newTokenAddress);
       if (!isApproved) {
         throw new Error("Failed to approve token");
@@ -426,19 +494,24 @@ export function TradingInterface() {
         [
           "function symbol() view returns (string)",
           "function decimals() view returns (uint8)",
+          "function name() view returns (string)",
         ],
         provider
       );
 
-      let tokenSymbol;
+      let tokenSymbol, tokenName;
       try {
         tokenSymbol = await tokenContract.symbol();
+        tokenName = await tokenContract.name();
+        addLog(`Found token: ${tokenName} (${tokenSymbol})`, "info");
       } catch (error) {
-        console.error("Error getting token symbol:", error);
+        console.error("Error getting token info:", error);
         tokenSymbol = "Unknown Token";
+        tokenName = "Unknown Token";
       }
 
       // Add new token to settings
+      addLog("Adding token to trading list...", "info");
       setSettings((prev) => ({
         ...prev,
         [newTokenAddress]: {
@@ -446,16 +519,22 @@ export function TradingInterface() {
           minConfidence: 70,
           maxRiskScore: 50,
           tradeAmount: "",
-          name: tokenSymbol,
+          name: `${tokenName} (${tokenSymbol})`,
         },
       }));
 
       // Clear input
       setNewTokenAddress("");
-      addLog(`Added new token: ${tokenSymbol} (${newTokenAddress})`, "success");
+      addLog(
+        `Successfully added token: ${tokenName} (${tokenSymbol}) at ${newTokenAddress}`,
+        "success"
+      );
     } catch (error) {
       console.error("Error adding token:", error);
-      setError("Failed to add token");
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to add token";
+      setError(errorMessage);
+      addLog(errorMessage, "error");
     } finally {
       setAddingToken(false);
     }
@@ -701,7 +780,27 @@ export function TradingInterface() {
 
             <div>
               <button
-                onClick={() => executeTrade(tokenAddress)}
+                onClick={() => {
+                  console.log("Trade button clicked for", tokenAddress);
+                  addLog(
+                    `Initiating trade for ${getTokenSymbol(tokenAddress)}...`,
+                    "info",
+                    tokenAddress
+                  );
+                  if (
+                    !tokenSettings.tradeAmount ||
+                    parseFloat(tokenSettings.tradeAmount) <= 0
+                  ) {
+                    setError("Please enter a valid trade amount");
+                    addLog(
+                      "Trade failed: Invalid trade amount",
+                      "error",
+                      tokenAddress
+                    );
+                    return;
+                  }
+                  executeTrade(tokenAddress);
+                }}
                 className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
                 disabled={
                   isLoading ||

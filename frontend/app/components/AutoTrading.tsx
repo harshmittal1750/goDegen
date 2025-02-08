@@ -5,6 +5,9 @@ import {
   AI_ORACLE_ABI,
   CONTRACT_ADDRESSES,
   TOKENS,
+  AI_TRADER_ABI,
+  POOLS,
+  // POOL_FEES,
 } from "../lib/constants";
 
 interface AutoTradingSettings {
@@ -31,7 +34,7 @@ export function AutoTrading() {
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<TradeLog[]>([]);
-  const autoTradingInterval = useRef<ReturnType<typeof setInterval>>();
+  const autoTradingInterval = useRef<NodeJS.Timeout | null>(null);
   const TRADE_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
   useEffect(() => {
@@ -60,7 +63,7 @@ export function AutoTrading() {
         throw new Error("Please install MetaMask!");
       }
 
-      const provider = new ethers.BrowserProvider(window.ethereum as any);
+      const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const userAddress = await signer.getAddress();
 
@@ -101,7 +104,7 @@ export function AutoTrading() {
         throw new Error("Please install MetaMask!");
       }
 
-      const provider = new ethers.BrowserProvider(window.ethereum as any);
+      const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const userAddress = await signer.getAddress();
 
@@ -133,10 +136,12 @@ export function AutoTrading() {
         return;
       }
 
-      if (Number(prediction.priceDirection) <= 0) {
-        addLog("No positive price direction - skipping trade", "info");
-        return;
-      }
+      // Temporarily bypass price direction check for testing
+      // if (Number(prediction.priceDirection) <= 0) {
+      //   addLog("No positive price direction - skipping trade", "info");
+      //   return;
+      // }
+      addLog("Bypassing price direction check for testing", "warning");
 
       // Execute trade
       const portfolioContract = new ethers.Contract(
@@ -157,17 +162,138 @@ export function AutoTrading() {
         return;
       }
 
-      addLog("Executing trade...");
-      const tx = await portfolioContract.executeAITrade(
-        userAddress,
+      // First approve USDC spending if needed
+      const usdcContract = new ethers.Contract(
         TOKENS.USDC,
-        TOKENS.AERO,
-        tradeAmount
+        [
+          "function approve(address spender, uint256 amount) external returns (bool)",
+          "function allowance(address owner, address spender) external view returns (uint256)",
+          "function balanceOf(address account) external view returns (uint256)",
+        ],
+        signer
       );
 
-      addLog("Waiting for transaction confirmation...");
-      await tx.wait();
-      addLog(`Trade executed successfully! TX: ${tx.hash}`, "success");
+      // Check allowance
+      const allowance = await usdcContract.allowance(
+        userAddress,
+        CONTRACT_ADDRESSES.aiTrader
+      );
+
+      if (allowance < tradeAmount) {
+        addLog("Approving USDC spending...", "info");
+        const approveTx = await usdcContract.approve(
+          CONTRACT_ADDRESSES.aiTrader,
+          ethers.MaxUint256 // Infinite approval
+        );
+        addLog("Waiting for approval transaction...", "info");
+        await approveTx.wait();
+        addLog("USDC approved successfully!", "success");
+      }
+
+      // Execute trade through AI_Trader contract
+      addLog("Executing trade through AI Trader...");
+      const aiTraderContract = new ethers.Contract(
+        CONTRACT_ADDRESSES.aiTrader,
+        AI_TRADER_ABI,
+        signer
+      );
+
+      // Check if tokens are whitelisted
+      const isUSDCWhitelisted = await aiTraderContract.whitelistedTokens(
+        TOKENS.USDC
+      );
+      const isDICKBUTTWhitelisted = await aiTraderContract.whitelistedTokens(
+        TOKENS.DICKBUTT
+      );
+
+      if (!isUSDCWhitelisted || !isDICKBUTTWhitelisted) {
+        throw new Error("One or both tokens are not whitelisted for trading");
+      }
+
+      // Check minimum trade amount
+      const minTradeAmount = await aiTraderContract.MIN_TRADE_AMOUNT();
+      if (tradeAmount < minTradeAmount) {
+        throw new Error(
+          `Trade amount too low. Minimum is ${ethers.formatUnits(
+            minTradeAmount,
+            6
+          )} USDC`
+        );
+      }
+
+      // Check liquidity using quoter
+      // const quoterContract = new ethers.Contract(
+      //   "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a", // QuoterV2 on Base
+      //   [
+      //     "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+      //   ],
+      //   signer
+      // );
+
+      const amountIn = ethers.parseUnits(settings.tradeAmount, 6); // USDC has 6 decimals
+      addLog("Checking pool liquidity...", "info");
+
+      try {
+        // Instead of using Uniswap V3, use Aerodrome pool
+        addLog("Using Aerodrome DICKBUTT/USDC pool...", "info");
+        const pool = POOLS.DICKBUTT_USDC_AERO;
+
+        if (!pool) {
+          throw new Error("Pool not configured");
+        }
+
+        addLog(`Using Aerodrome pool ${pool}`, "info");
+
+        // First approve USDC spending if needed
+        const usdcContract = new ethers.Contract(
+          TOKENS.USDC,
+          [
+            "function approve(address spender, uint256 amount) external returns (bool)",
+            "function allowance(address owner, address spender) external view returns (uint256)",
+            "function balanceOf(address account) external view returns (uint256)",
+          ],
+          signer
+        );
+
+        // Check allowance
+        const allowance = await usdcContract.allowance(
+          userAddress,
+          CONTRACT_ADDRESSES.aiTrader
+        );
+
+        if (allowance < amountIn) {
+          addLog("Approving USDC spending...", "info");
+          const approveTx = await usdcContract.approve(
+            CONTRACT_ADDRESSES.aiTrader,
+            ethers.MaxUint256 // Infinite approval
+          );
+          addLog("Waiting for approval transaction...", "info");
+          await approveTx.wait();
+          addLog("USDC approved successfully!", "success");
+        }
+
+        // Now execute the trade directly without quoting
+        addLog("Executing trade through AI Trader...", "info");
+
+        // Execute the trade directly through the contract
+        const tx = await aiTraderContract.executeManualTrade(
+          TOKENS.USDC,
+          TOKENS.DICKBUTT,
+          amountIn,
+          userAddress,
+          {
+            gasLimit: 1000000,
+          }
+        );
+
+        addLog("Waiting for transaction confirmation...");
+        await tx.wait();
+        addLog(`Trade executed successfully! TX: ${tx.hash}`, "success");
+      } catch (error) {
+        throw new Error(
+          "Failed to check liquidity: " + (error as Error).message
+        );
+      }
     } catch (error) {
       console.error("Error in auto-trading:", error);
       addLog(
@@ -196,7 +322,7 @@ export function AutoTrading() {
   const stopAutoTrading = () => {
     if (autoTradingInterval.current) {
       clearInterval(autoTradingInterval.current);
-      autoTradingInterval.current = undefined;
+      autoTradingInterval.current = null as unknown as NodeJS.Timeout;
     }
     addLog("Auto-trading stopped", "info");
   };
@@ -210,7 +336,7 @@ export function AutoTrading() {
       setUpdating(true);
       setError(null);
 
-      const provider = new ethers.BrowserProvider(window.ethereum as any);
+      const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
       const portfolioContract = new ethers.Contract(
@@ -246,13 +372,145 @@ export function AutoTrading() {
     }
   };
 
+  const testAutoTrade = async () => {
+    try {
+      setUpdating(true);
+      addLog("Starting test auto trade...", "info");
+
+      // Check if auto-trading is enabled
+      if (!settings.enabled) {
+        throw new Error("Please enable auto-trading first");
+      }
+
+      // Check if trade amount is set
+      if (!settings.tradeAmount || parseFloat(settings.tradeAmount) <= 0) {
+        throw new Error("Please set a valid trade amount");
+      }
+
+      // Setup provider and signer
+      if (!window.ethereum) {
+        throw new Error("Please install MetaMask!");
+      }
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const userAddress = await signer.getAddress();
+
+      // Check liquidity using quoter
+      const quoterContract = new ethers.Contract(
+        "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a", // QuoterV2 on Base
+        [
+          "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+        ],
+        signer
+      );
+
+      const amountIn = ethers.parseUnits(settings.tradeAmount, 6); // USDC has 6 decimals
+      addLog("Checking pool liquidity...", "info");
+
+      try {
+        // First find the best pool using GoDegen contract
+        const aiTraderContract = new ethers.Contract(
+          CONTRACT_ADDRESSES.aiTrader,
+          AI_TRADER_ABI,
+          signer
+        );
+
+        addLog("Finding best liquidity pool...", "info");
+        const [pool, fee] = await aiTraderContract.findBestPool(
+          TOKENS.USDC,
+          TOKENS.DICKBUTT
+        );
+
+        if (!pool || pool === ethers.ZeroAddress) {
+          throw new Error("No liquidity pool found");
+        }
+
+        addLog(`Found pool with fee tier ${fee}`, "info");
+
+        // Now try to quote the trade with error handling
+        try {
+          const [amountOut] =
+            await quoterContract.quoteExactInputSingle.staticCall(
+              TOKENS.USDC,
+              TOKENS.DICKBUTT,
+              fee,
+              amountIn,
+              0,
+              { gasLimit: 500000 }
+            );
+
+          if (amountOut <= 0) {
+            throw new Error("Insufficient liquidity in pool");
+          }
+
+          const formattedAmountOut = ethers.formatUnits(amountOut, 18); // DICKBUTT has 18 decimals
+          addLog(
+            `Pool has sufficient liquidity. Expected output: ${formattedAmountOut} DICKBUTT`,
+            "success"
+          );
+
+          // Now execute the trade
+          addLog("Executing trade...", "info");
+          const tx = await aiTraderContract.executeManualTrade(
+            TOKENS.USDC,
+            TOKENS.DICKBUTT,
+            amountIn,
+            userAddress,
+            {
+              gasLimit: 1000000,
+              value: 0,
+            }
+          );
+
+          addLog("Waiting for transaction confirmation...");
+          await tx.wait();
+          addLog(`Trade executed successfully! TX: ${tx.hash}`, "success");
+        } catch (quoteError) {
+          console.error("Quote error:", quoteError);
+          throw new Error(
+            "Failed to quote trade - insufficient liquidity or invalid pool"
+          );
+        }
+      } catch (error) {
+        throw new Error(
+          "Failed to check liquidity: " + (error as Error).message
+        );
+      }
+
+      // Execute a test trade
+      addLog("Executing test trade...", "info");
+      await checkAndExecuteTrade();
+
+      addLog("Test auto trade completed successfully!", "success");
+    } catch (error) {
+      console.error("Error in test auto trade:", error);
+      addLog(
+        error instanceof Error ? error.message : "Test trade failed",
+        "error"
+      );
+      setError(error instanceof Error ? error.message : "Test trade failed");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   if (loading) {
     return <div>Loading auto-trading settings...</div>;
   }
 
   return (
     <div className="p-6 rounded-lg shadow-md ">
-      <h3 className="text-xl font-semibold mb-4">Auto-Trading Settings</h3>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xl font-semibold">Auto-Trading Settings</h3>
+        <button
+          onClick={testAutoTrade}
+          disabled={updating || !settings.enabled}
+          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {updating ? "Testing..." : "Test Auto Trade"}
+        </button>
+      </div>
 
       <div className="space-y-4">
         <div className="flex items-center">

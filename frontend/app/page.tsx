@@ -1,7 +1,7 @@
 "use client";
 
-import { BlockMonitor } from "./components/BlockMonitor";
-import { TradeMonitor } from "./components/TradeMonitor";
+// import { BlockMonitor } from "./components/BlockMonitor";
+// import { TradeMonitor } from "./components/TradeMonitor";
 import { Portfolio } from "./components/Portfolio";
 import { NetworkManager } from "./components/NetworkManager";
 

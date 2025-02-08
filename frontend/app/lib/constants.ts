@@ -22,6 +22,18 @@ export const PAIR_ABI = [
 export const TOKENS = {
   USDC: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
   AERO: "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
+  DICKBUTT: "0x2D57C47BC5D2432FEEEdf2c9150162A9862D3cCf",
+  WETH: "0x4200000000000000000000000000000000000006",
+} as const;
+
+export const POOLS = {
+  DICKBUTT_USDC: "0xf71323c2c3dc3895aba839ad9f79168e904d42ff",
+  DICKBUTT_WETH: "0x92d90f7f8413749bd4bea26dde4e29efc9e9a0b6",
+  DICKBUTT_USDC_AERO: "0x696eab64ff2d7b867cde8ab237e29a5f312302fc", // Aerodrome pool
+} as const;
+
+export const POOL_FEES = {
+  DICKBUTT_USDC: 10000, // 1%
 } as const;
 
 export const PAIRS_TO_MONITOR: PairInfo[] = [
@@ -31,6 +43,18 @@ export const PAIRS_TO_MONITOR: PairInfo[] = [
     token1: "USDC",
     name: "AERO/USDC",
     token0Address: TOKENS.AERO,
+    token1Address: TOKENS.USDC,
+    decimals: {
+      token0: 18,
+      token1: 6,
+    },
+  },
+  {
+    address: "0xa46d5090499efb9c5dd7d95f7ca69f996b9fb761",
+    token0: "DICKBUTT",
+    token1: "USDC",
+    name: "DICKBUTT/USDC",
+    token0Address: TOKENS.DICKBUTT,
     token1Address: TOKENS.USDC,
     decimals: {
       token0: 18,

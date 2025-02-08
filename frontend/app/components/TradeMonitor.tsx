@@ -63,7 +63,7 @@ export function TradeMonitor() {
   });
 
   // Debounce function for analytics updates
-  const debounceTimeout = useRef<NodeJS.Timeout>();
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
   const updateAnalytics = useCallback((trade: Trade, prevTrades: Trade[]) => {
     if (debounceTimeout.current) {
       clearTimeout(debounceTimeout.current);
@@ -353,15 +353,19 @@ export function TradeMonitor() {
     // Websocket connection management
     let wsReconnectTimeout: NodeJS.Timeout;
     const setupWebSocket = () => {
-      const monitorPair = async (pairAddress: string) => {
+      const monitorPair = async (pairInfo: (typeof PAIRS_TO_MONITOR)[0]) => {
         try {
-          const pair = new ethers.Contract(pairAddress, PAIR_ABI, wsProvider);
+          const pair = new ethers.Contract(
+            pairInfo.address,
+            PAIR_ABI,
+            wsProvider
+          );
           pair.on("Swap", async (...args) => {
             const event = args[args.length - 1];
-            await processSwapEvent(pairAddress, event);
+            await processSwapEvent(pairInfo.address, event);
           });
         } catch (error) {
-          console.error(`Error monitoring pair ${pairAddress}:`, error);
+          console.error(`Error monitoring pair ${pairInfo.address}:`, error);
         }
       };
 

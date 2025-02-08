@@ -330,7 +330,7 @@ export const AI_TRADER_ABI = [
     stateMutability: "view",
     type: "function",
   },
-];
+] as const;
 
 export const PORTFOLIO_MANAGER_ABI = [
   {
@@ -954,4 +954,14 @@ export const AI_ORACLE_ABI = [
     stateMutability: "nonpayable",
     type: "function",
   },
+];
+
+export const ERC20_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function approve(address spender, uint256 amount) external returns (bool)",
+  "function allowance(address owner, address spender) external view returns (uint256)",
+  "function transfer(address to, uint256 amount) external returns (bool)",
+  "function transferFrom(address from, address to, uint256 amount) external returns (bool)",
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
 ];

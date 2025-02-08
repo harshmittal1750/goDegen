@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ethers } from "ethers";
+import { ethers, Eip1193Provider } from "ethers";
 import {
   PORTFOLIO_MANAGER_ABI,
   AI_ORACLE_ABI,
@@ -31,7 +31,6 @@ export function Portfolio() {
   const [loading, setLoading] = useState(true);
   const [riskLevel, setRiskLevel] = useState(5);
   const [depositAmount, setDepositAmount] = useState("");
-  const [selectedToken, setSelectedToken] = useState(TOKENS.USDC);
   const [isDepositing, setIsDepositing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
@@ -39,7 +38,12 @@ export function Portfolio() {
   useEffect(() => {
     const loadPortfolio = async () => {
       try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
+        if (!window.ethereum) {
+          throw new Error("Please install MetaMask!");
+        }
+        const provider = new ethers.BrowserProvider(
+          window.ethereum as Eip1193Provider
+        );
         const signer = await provider.getSigner();
         const userAddress = await signer.getAddress();
 
@@ -71,7 +75,7 @@ export function Portfolio() {
         }
 
         // Get AI predictions for the selected token
-        const predictions = await oracleContract.getPrediction(selectedToken);
+        const predictions = await oracleContract.getPrediction(TOKENS.USDC);
 
         setPortfolio({
           totalValue: Number(portfolioData.totalValue),
@@ -95,11 +99,16 @@ export function Portfolio() {
     };
 
     loadPortfolio();
-  }, [selectedToken]);
+  }, []);
 
   const createPortfolio = async () => {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      if (!window.ethereum) {
+        throw new Error("Please install MetaMask!");
+      }
+      const provider = new ethers.BrowserProvider(
+        window.ethereum as Eip1193Provider
+      );
       const signer = await provider.getSigner();
 
       const contract = new ethers.Contract(
@@ -123,7 +132,12 @@ export function Portfolio() {
       setIsDepositing(true);
       setErrorMessage(null);
 
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      if (!window.ethereum) {
+        throw new Error("Please install MetaMask!");
+      }
+      const provider = new ethers.BrowserProvider(
+        window.ethereum as Eip1193Provider
+      );
       const signer = await provider.getSigner();
       const userAddress = await signer.getAddress();
 
@@ -136,7 +150,7 @@ export function Portfolio() {
 
       // Check if token is approved in the contract
       const isTokenApproved = await portfolioContract.approvedTokens(
-        selectedToken
+        TOKENS.USDC
       );
       if (!isTokenApproved) {
         setErrorMessage(
@@ -147,7 +161,7 @@ export function Portfolio() {
 
       // Get token contract
       const tokenContract = new ethers.Contract(
-        selectedToken,
+        TOKENS.USDC,
         [
           "function approve(address spender, uint256 amount) external returns (bool)",
           "function allowance(address owner, address spender) external view returns (uint256)",
@@ -187,17 +201,18 @@ export function Portfolio() {
 
       // Now proceed with deposit
       console.log("Depositing tokens...");
-      const tx = await portfolioContract.deposit(selectedToken, amount);
+      const tx = await portfolioContract.deposit(TOKENS.USDC, amount);
       await tx.wait();
       console.log("Deposit successful");
 
       // Reload portfolio data
       window.location.reload();
-    } catch (error: any) {
+    } catch (error: Error | unknown) {
       console.error("Error depositing:", error);
       setErrorMessage(
-        error.reason ||
-          "Error depositing tokens. Please make sure you have sufficient balance and approved the token spend."
+        error instanceof Error
+          ? error.message
+          : "Error depositing tokens. Please make sure you have sufficient balance and approved the token spend."
       );
     } finally {
       setIsDepositing(false);
@@ -207,7 +222,12 @@ export function Portfolio() {
   // Add a function to check token approval status
   const checkTokenApproval = async () => {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      if (!window.ethereum) {
+        throw new Error("Please install MetaMask!");
+      }
+      const provider = new ethers.BrowserProvider(
+        window.ethereum as Eip1193Provider
+      );
       const signer = await provider.getSigner();
 
       const portfolioContract = new ethers.Contract(
@@ -216,7 +236,7 @@ export function Portfolio() {
         signer
       );
 
-      const isApproved = await portfolioContract.approvedTokens(selectedToken);
+      const isApproved = await portfolioContract.approvedTokens(TOKENS.USDC);
       if (!isApproved) {
         setErrorMessage(
           "Selected token is not approved in the portfolio manager"
@@ -231,14 +251,17 @@ export function Portfolio() {
 
   // Add useEffect to check token approval when token changes
   useEffect(() => {
-    if (selectedToken) {
-      checkTokenApproval();
-    }
-  }, [selectedToken]);
+    checkTokenApproval();
+  }, []);
 
   const checkOwnership = async () => {
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      if (!window.ethereum) {
+        throw new Error("Please install MetaMask!");
+      }
+      const provider = new ethers.BrowserProvider(
+        window.ethereum as Eip1193Provider
+      );
       const signer = await provider.getSigner();
       const userAddress = await signer.getAddress();
 
@@ -270,7 +293,12 @@ export function Portfolio() {
 
     try {
       setIsDepositing(true);
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      if (!window.ethereum) {
+        throw new Error("Please install MetaMask!");
+      }
+      const provider = new ethers.BrowserProvider(
+        window.ethereum as Eip1193Provider
+      );
       const signer = await provider.getSigner();
 
       const portfolioContract = new ethers.Contract(
@@ -284,9 +312,11 @@ export function Portfolio() {
 
       setErrorMessage(null);
       checkTokenApproval();
-    } catch (error: any) {
+    } catch (error: Error | unknown) {
       console.error("Error approving token:", error);
-      setErrorMessage(error.reason || "Error approving token");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Error approving token"
+      );
     } finally {
       setIsDepositing(false);
     }

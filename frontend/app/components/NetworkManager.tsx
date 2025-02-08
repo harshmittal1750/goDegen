@@ -15,7 +15,7 @@ export function NetworkManager() {
           const chainId = await window.ethereum.request({
             method: "eth_chainId",
           });
-          const chainIdNumber = parseInt(chainId, 16);
+          const chainIdNumber = parseInt(chainId as string, 16);
           setCurrentChainId(chainIdNumber);
           setIsCorrectNetwork(chainIdNumber === CHAIN_CONFIG.chainId);
         } catch (error) {
@@ -28,7 +28,8 @@ export function NetworkManager() {
 
     // Listen for network changes
     if (window.ethereum) {
-      window.ethereum.on("chainChanged", (chainId: string) => {
+      window.ethereum.on("chainChanged", (params: unknown) => {
+        const chainId = params as string;
         const chainIdNumber = parseInt(chainId, 16);
         setCurrentChainId(chainIdNumber);
         setIsCorrectNetwork(chainIdNumber === CHAIN_CONFIG.chainId);
@@ -55,9 +56,9 @@ export function NetworkManager() {
         method: "wallet_switchEthereumChain",
         params: [{ chainId: `0x${CHAIN_CONFIG.chainId.toString(16)}` }],
       });
-    } catch (switchError: any) {
+    } catch (switchError: unknown) {
       // This error code indicates that the chain has not been added to MetaMask
-      if (switchError.code === 4902) {
+      if ((switchError as { code: number }).code === 4902) {
         try {
           await window.ethereum.request({
             method: "wallet_addEthereumChain",
