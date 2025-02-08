@@ -1,0 +1,257 @@
+{
+	"compiler": {
+		"version": "0.8.26+commit.8a97fa7a"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"inputs": [],
+				"stateMutability": "nonpayable",
+				"type": "constructor"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "token",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "confidence",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "int256",
+						"name": "priceDirection",
+						"type": "int256"
+					},
+					{
+						"indexed": false,
+						"internalType": "bool",
+						"name": "isHoneypot",
+						"type": "bool"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "riskScore",
+						"type": "uint256"
+					}
+				],
+				"name": "PredictionUpdated",
+				"type": "event"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_updater",
+						"type": "address"
+					}
+				],
+				"name": "addUpdater",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"name": "authorizedUpdaters",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_token",
+						"type": "address"
+					}
+				],
+				"name": "getPrediction",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "confidence",
+						"type": "uint256"
+					},
+					{
+						"internalType": "int256",
+						"name": "priceDirection",
+						"type": "int256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "isHoneypot",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "riskScore",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "owner",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_updater",
+						"type": "address"
+					}
+				],
+				"name": "removeUpdater",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"name": "tokenPredictions",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "confidence",
+						"type": "uint256"
+					},
+					{
+						"internalType": "int256",
+						"name": "priceDirection",
+						"type": "int256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "timestamp",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "isHoneypot",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "riskScore",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_token",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_confidence",
+						"type": "uint256"
+					},
+					{
+						"internalType": "int256",
+						"name": "_priceDirection",
+						"type": "int256"
+					},
+					{
+						"internalType": "bool",
+						"name": "_isHoneypot",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_riskScore",
+						"type": "uint256"
+					}
+				],
+				"name": "updatePrediction",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"kind": "dev",
+			"methods": {},
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"contracts/AIOracleV1.sol": "AIOracleV1"
+		},
+		"evmVersion": "cancun",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"contracts/AIOracleV1.sol": {
+			"keccak256": "0xd727e4abed251a51aba3d28bef929ccb050aa4de60bc3fcd28090241364bc6eb",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://64180c130eb22d28a061a9b887c814a62e06bed48687ee60ce8579fdb45c5728",
+				"dweb:/ipfs/Qmb49gyLoKLyKKWwcsQnJ54ZKx3UdjJ4SknNd61ws6n9sN"
+			]
+		}
+	},
+	"version": 1
+}

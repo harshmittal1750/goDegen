@@ -1,0 +1,65 @@
+{
+	"compiler": {
+		"version": "0.8.26+commit.8a97fa7a"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_token",
+						"type": "address"
+					}
+				],
+				"name": "isHoneypot",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"kind": "dev",
+			"methods": {},
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"contracts/GoDegen.sol": "HoneypotChecker"
+		},
+		"evmVersion": "cancun",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"contracts/GoDegen.sol": {
+			"keccak256": "0x50893fa79330273fec9742818c0a0e5144421484461a7a972e988222daee86fa",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://9821fe8ba2f3a5577155236fd9c086bac483636c1cb331dab6756e2f2391bfb1",
+				"dweb:/ipfs/Qmc9h4Ac4GWK8D8MJhqgzE8MxyXpyvgZph5KMmdBgUBnh3"
+			]
+		}
+	},
+	"version": 1
+}
