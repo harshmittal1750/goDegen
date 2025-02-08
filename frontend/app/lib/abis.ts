@@ -161,6 +161,40 @@ export const AI_TRADER_ABI = [
         name: "_recipient",
         type: "address",
       },
+    ],
+    name: "executeManualTrade",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "amountOut",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "_tokenIn",
+        type: "address",
+      },
+      {
+        internalType: "address",
+        name: "_tokenOut",
+        type: "address",
+      },
+      {
+        internalType: "uint256",
+        name: "_amountIn",
+        type: "uint256",
+      },
+      {
+        internalType: "address",
+        name: "_recipient",
+        type: "address",
+      },
       {
         internalType: "bytes",
         name: "_aiData",

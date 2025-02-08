@@ -38,9 +38,9 @@ contract GoDegen {
     ) {
         owner = msg.sender;
         aiOracle = _oracle;
-        swapRouter = ISwapRouter(_router);
-        factory = IUniswapV3Factory(_factory);
-        quoter = IQuoterV2(_quoter);
+        swapRouter = ISwapRouter(0x2626664c2603336E57B271c5C0b26F421741e481); // SwapRouter02 on Base
+        factory = IUniswapV3Factory(0x33128a8fC17869897dcE68Ed026d694621f6FDfD); // Factory on Base
+        quoter = IQuoterV2(0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a); // QuoterV2 on Base
     }
 
     modifier onlyOwner() {

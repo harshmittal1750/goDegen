@@ -43,7 +43,6 @@ interface TokenPredictions {
 
 export function TradingInterface() {
   const [predictions, setPredictions] = useState<TokenPredictions>({});
-  const [loading, setLoading] = useState<{ [key: string]: boolean }>({});
   const [tradingLogs, setTradingLogs] = useState<TradeLog[]>([]);
   const [settings, setSettings] = useState<TradeSettings>({
     [TOKENS.AERO]: {
@@ -52,7 +51,6 @@ export function TradingInterface() {
       maxRiskScore: 50,
       tradeAmount: "",
     },
-    // Add more tokens here as needed
   });
   const [error, setError] = useState<string | null>(null);
   const [lastTradeTimes, setLastTradeTimes] = useState<{
@@ -62,6 +60,7 @@ export function TradingInterface() {
   const [newTokenAddress, setNewTokenAddress] = useState("");
   const [addingToken, setAddingToken] = useState(false);
   const [degenMode, setDegenMode] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const addLog = (
     message: string,
@@ -83,7 +82,7 @@ export function TradingInterface() {
 
   const fetchPrediction = async (tokenAddress: string) => {
     try {
-      setLoading((prev) => ({ ...prev, [tokenAddress]: true }));
+      setIsLoading(true);
       setError(null);
       addLog(
         `Fetching prediction for ${getTokenSymbol(tokenAddress)}...`,
@@ -133,7 +132,7 @@ export function TradingInterface() {
       setError("Failed to fetch prediction");
       addLog("Failed to fetch prediction", "error", tokenAddress);
     } finally {
-      setLoading((prev) => ({ ...prev, [tokenAddress]: false }));
+      setIsLoading(false);
     }
   };
 
@@ -153,7 +152,7 @@ export function TradingInterface() {
     }
 
     try {
-      setLoading((prev) => ({ ...prev, [tokenAddress]: true }));
+      setIsLoading(true);
       setError(null);
 
       if (!window.ethereum) {
@@ -234,16 +233,23 @@ export function TradingInterface() {
       const signer = await provider.getSigner();
       const userAddress = await signer.getAddress();
 
-      // First approve USDC spending if needed
+      // First check USDC balance
       const usdcContract = new ethers.Contract(
         TOKENS.USDC,
         [
+          "function balanceOf(address) view returns (uint256)",
           "function approve(address spender, uint256 amount) external returns (bool)",
           "function allowance(address owner, address spender) external view returns (uint256)",
         ],
         signer
       );
 
+      const balance = await usdcContract.balanceOf(userAddress);
+      if (balance < amount) {
+        throw new Error("Insufficient USDC balance");
+      }
+
+      // Check and approve USDC spending
       const allowance = await usdcContract.allowance(
         userAddress,
         CONTRACT_ADDRESSES.aiTrader
@@ -293,7 +299,7 @@ export function TradingInterface() {
       setError(errorMessage);
       addLog(errorMessage, "error", tokenAddress);
     } finally {
-      setLoading((prev) => ({ ...prev, [tokenAddress]: false }));
+      setIsLoading(false);
     }
   };
 
@@ -543,7 +549,6 @@ export function TradingInterface() {
             )}
           </div>
         </div>
-
         {/* Token Settings and Trading */}
         {Object.entries(settings).map(([tokenAddress, tokenSettings]) => (
           <div key={tokenAddress} className="p-4 border rounded-lg">
@@ -694,25 +699,24 @@ export function TradingInterface() {
               </div>
             )}
 
-            <button
-              onClick={() => executeTrade(tokenAddress)}
-              className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-              disabled={
-                loading[tokenAddress] ||
-                !tokenSettings.enabled ||
-                !tokenSettings.tradeAmount
-              }
-            >
-              {loading[tokenAddress]
-                ? "Processing..."
-                : !tokenSettings.tradeAmount
-                ? "Enter Trade Amount"
-                : `Execute Manual Trade (${getTokenSymbol(tokenAddress)})`}
-            </button>
+            <div>
+              <button
+                onClick={() => executeTrade(tokenAddress)}
+                className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+                disabled={
+                  isLoading ||
+                  !tokenSettings.enabled ||
+                  !tokenSettings.tradeAmount
+                }
+              >
+                {isLoading
+                  ? "Processing..."
+                  : `Execute Manual Trade (${getTokenSymbol(tokenAddress)})`}
+              </button>
+            </div>
           </div>
         ))}
-
-        {/* Trading Logs */}
+        ,{/* Trading Logs */}
         <div className="mt-6">
           <h4 className="text-lg font-semibold mb-2">Trading Logs</h4>
           <div className="h-64 overflow-y-auto border rounded-lg p-4 space-y-2">
@@ -747,7 +751,6 @@ export function TradingInterface() {
             )}
           </div>
         </div>
-
         {/* Error Display */}
         {error && (
           <div className="p-4 bg-red-100 text-red-700 rounded-md">{error}</div>
