@@ -2,8 +2,21 @@
 pragma solidity ^0.8.0;
 
 interface IERC20 {
-    function transferFrom(address sender, address recipient, uint256 amount) external;
+    function transferFrom(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) external;
+
     function approve(address spender, uint256 amount) external;
+
+    function balanceOf(address account) external view returns (uint256);
+
+    function totalSupply() external view returns (uint256);
+}
+
+interface IOwnable {
+    function owner() external view returns (address);
 }
 
 contract AI_Trader {
@@ -15,32 +28,33 @@ contract AI_Trader {
         aiOracle = _oracle;
     }
 
-    
     function executeTrade(
         address _tokenIn,
         address _tokenOut,
         uint256 _amountIn,
-        bytes calldata _aiData 
+        bytes calldata _aiData
     ) external {
         require(msg.sender == aiOracle, "Only AI Oracle");
-        
+
         IERC20(_tokenIn).approve(address(this), _amountIn);
         IERC20(_tokenIn).transferFrom(owner, address(this), _amountIn);
-        
-        
+
         (bool success, ) = _tokenOut.call{value: _amountIn}("");
         require(success, "Trade failed");
     }
 }
+
 contract HoneypotChecker {
     function isHoneypot(address _token) public view returns (bool) {
-       
-        (bool success,) = _token.staticcall(abi.encodeWithSignature("sell(uint256)", 1e18));
+        (bool success, ) = _token.staticcall(
+            abi.encodeWithSignature("sell(uint256)", 1e18)
+        );
         if (!success) return true;
-        
-        uint256 ownerBalance = IERC20(_token).balanceOf(IOwnable(_token).owner());
+
+        uint256 ownerBalance = IERC20(_token).balanceOf(
+            IOwnable(_token).owner()
+        );
         uint256 totalSupply = IERC20(_token).totalSupply();
         return (ownerBalance * 100) / totalSupply > 80;
     }
-}   
-
+}
