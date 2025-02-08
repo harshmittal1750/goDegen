@@ -10,6 +10,7 @@ import {
 } from "../lib/constants";
 import { NetworkManager } from "./NetworkManager";
 import { TradingInterface } from "./TradingInterface";
+import { AutoTrading } from "./AutoTrading";
 
 interface PortfolioData {
   totalValue: number;
@@ -476,6 +477,13 @@ export function Portfolio() {
             )}
 
             <TradingInterface />
+
+            {/* Add AutoTrading component */}
+            {portfolio?.isActive && (
+              <div className="mt-6">
+                <AutoTrading />
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -34,6 +34,10 @@ contract PortfolioManager {
         uint256 riskLevel; // 1-10, where 1 is lowest risk
         mapping(address => uint256) tokenBalances;
         bool isActive;
+        bool autoTrading; // New: Flag for auto-trading
+        uint256 minConfidence; // New: Minimum confidence required for auto-trade
+        uint256 maxRiskScore; // New: Maximum risk score allowed for auto-trade
+        uint256 tradeAmount; // New: Amount to trade in USDC
     }
 
     mapping(address => Portfolio) public userPortfolios;
@@ -49,6 +53,13 @@ contract PortfolioManager {
         address indexed tokenIn,
         address indexed tokenOut,
         uint256 amount
+    );
+    event AutoTradingUpdated(
+        address indexed user,
+        bool enabled,
+        uint256 minConfidence,
+        uint256 maxRiskScore,
+        uint256 tradeAmount
     );
 
     constructor(address _aiTrader) {
@@ -147,5 +158,52 @@ contract PortfolioManager {
     ) external view returns (uint256) {
         require(userPortfolios[_user].isActive, "No active portfolio");
         return userPortfolios[_user].tokenBalances[_token];
+    }
+
+    function updateAutoTrading(
+        bool _enabled,
+        uint256 _minConfidence,
+        uint256 _maxRiskScore,
+        uint256 _tradeAmount
+    ) external {
+        require(userPortfolios[msg.sender].isActive, "No active portfolio");
+        require(_minConfidence <= 100, "Invalid confidence");
+        require(_maxRiskScore <= 100, "Invalid risk score");
+        require(_tradeAmount > 0, "Invalid trade amount");
+
+        Portfolio storage portfolio = userPortfolios[msg.sender];
+        portfolio.autoTrading = _enabled;
+        portfolio.minConfidence = _minConfidence;
+        portfolio.maxRiskScore = _maxRiskScore;
+        portfolio.tradeAmount = _tradeAmount;
+
+        emit AutoTradingUpdated(
+            msg.sender,
+            _enabled,
+            _minConfidence,
+            _maxRiskScore,
+            _tradeAmount
+        );
+    }
+
+    function getAutoTradingSettings(
+        address _user
+    )
+        external
+        view
+        returns (
+            bool enabled,
+            uint256 minConfidence,
+            uint256 maxRiskScore,
+            uint256 tradeAmount
+        )
+    {
+        Portfolio storage portfolio = userPortfolios[_user];
+        return (
+            portfolio.autoTrading,
+            portfolio.minConfidence,
+            portfolio.maxRiskScore,
+            portfolio.tradeAmount
+        );
     }
 }

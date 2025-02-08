@@ -39,7 +39,6 @@ interface TokenPredictions {
 export function TradingInterface() {
   const [predictions, setPredictions] = useState<TokenPredictions>({});
   const [loading, setLoading] = useState<{ [key: string]: boolean }>({});
-  const [autoTrading, setAutoTrading] = useState(false);
   const [tradingLogs, setTradingLogs] = useState<TradeLog[]>([]);
   const [settings, setSettings] = useState<TradeSettings>({
     [TOKENS.AERO]: {
@@ -245,33 +244,6 @@ export function TradingInterface() {
     }
   };
 
-  const toggleAutoTrading = async () => {
-    try {
-      setAutoTrading(!autoTrading);
-      if (!autoTrading) {
-        startAutoTrading();
-      }
-    } catch (error) {
-      console.error("Error toggling auto-trading:", error);
-    }
-  };
-
-  const startAutoTrading = async () => {
-    while (autoTrading) {
-      // Fetch predictions and execute trades for all enabled tokens
-      for (const [tokenAddress, tokenSettings] of Object.entries(settings)) {
-        if (tokenSettings.enabled) {
-          await fetchPrediction(tokenAddress);
-          if (predictions[tokenAddress] && !error) {
-            await executeTrade(tokenAddress);
-          }
-        }
-      }
-      addLog(`Waiting ${TRADE_COOLDOWN / 1000} seconds before next check...`);
-      await new Promise((resolve) => setTimeout(resolve, TRADE_COOLDOWN));
-    }
-  };
-
   const getTokenSymbol = (address: string): string => {
     // First check if it's a known token from TOKENS constant
     const knownToken = Object.entries(TOKENS).find(
@@ -372,7 +344,7 @@ export function TradingInterface() {
 
   return (
     <div className="p-6 rounded-lg shadow-md">
-      <h3 className="text-xl font-semibold mb-4">AI Trading Dashboard</h3>
+      <h3 className="text-xl font-semibold mb-4">Manual Trading Dashboard</h3>
 
       <div className="grid gap-6">
         {/* Token Management */}
@@ -587,7 +559,6 @@ export function TradingInterface() {
                 disabled={
                   loading[tokenAddress] ||
                   !tokenSettings.tradeAmount ||
-                  autoTrading ||
                   !tokenSettings.enabled
                 }
               >
@@ -639,26 +610,6 @@ export function TradingInterface() {
         {error && (
           <div className="p-4 bg-red-100 text-red-700 rounded-md">{error}</div>
         )}
-
-        {/* Auto-Trading Controls */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="font-medium">
-              Auto-Trading (All Enabled Tokens)
-            </span>
-            <button
-              onClick={toggleAutoTrading}
-              className={`px-4 py-2 rounded ${
-                autoTrading
-                  ? "bg-red-500 hover:bg-red-600"
-                  : "bg-green-500 hover:bg-green-600"
-              } text-white`}
-              disabled={Object.values(loading).some((isLoading) => isLoading)}
-            >
-              {autoTrading ? "Stop Trading" : "Start Trading"}
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
