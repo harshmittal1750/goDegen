@@ -47,11 +47,19 @@
 	},
 	"sources": {
 		"contracts/GoDegen.sol": {
-			"keccak256": "0x50893fa79330273fec9742818c0a0e5144421484461a7a972e988222daee86fa",
+			"keccak256": "0xa66a793a2ae884d9542b1b5a1acd8cd708449b93addf306f293d7d4b2a4efcbb",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://9821fe8ba2f3a5577155236fd9c086bac483636c1cb331dab6756e2f2391bfb1",
-				"dweb:/ipfs/Qmc9h4Ac4GWK8D8MJhqgzE8MxyXpyvgZph5KMmdBgUBnh3"
+				"bzz-raw://5e4d92e43fb8063f153cb4331ad55dc2df5d32a0d255f7823d5e3bd600f2f8e6",
+				"dweb:/ipfs/QmeQu5BFyat244yvv8W9K1K1hw8HkqdbhGCqMawkF9xjJm"
+			]
+		},
+		"contracts/Interfaces.sol": {
+			"keccak256": "0xc4e1ac942732fa2fde9798f1a65115b4cf4b97b3b1a5385a1c8b4307c24b7cf1",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://19dc47e8ba7ea19c359abf30f6f4e3c0bc84a64b61526fa576e1793ae0b6a44d",
+				"dweb:/ipfs/QmNq3GWJVVmgNFJYJapbGipENdvB1h6BMtoDSkjQ6m5ho7"
 			]
 		}
 	},
