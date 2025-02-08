@@ -197,6 +197,30 @@
 				"type": "function"
 			},
 			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_user",
+						"type": "address"
+					},
+					{
+						"internalType": "address",
+						"name": "_token",
+						"type": "address"
+					}
+				],
+				"name": "getTokenBalance",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
 				"inputs": [],
 				"name": "owner",
 				"outputs": [
@@ -298,11 +322,11 @@
 	},
 	"sources": {
 		"contracts/PortfolioManager.sol": {
-			"keccak256": "0x1a8d616668d3f56b6edbbdcd3649f3e5b4d130cf781af147c8c1f2b71504d220",
+			"keccak256": "0x461173316fae45ee0a8226f2b7a3d87d62f7561476d25276a9f8f7e3f25224ab",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://04ba27d6aaf64e26175a8c0a57a1dfa4cbf5abc1d14adfbabd191158acee690e",
-				"dweb:/ipfs/QmVewBTm4uLTZwDzmpwAqry5uVT7fYPMBT8eM8jBNis5ZM"
+				"bzz-raw://6b118e56ac70b9d4bff5122cb9d321a56cb620434f912327e94f63ab016c5b1a",
+				"dweb:/ipfs/QmUzj5ysKJbCJqrNwC216xVzH1p9SwjAR1p8DzV4SaYhFn"
 			]
 		}
 	},
