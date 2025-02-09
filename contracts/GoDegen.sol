@@ -7,22 +7,6 @@ interface IOwnable {
     function owner() external view returns (address);
 }
 
-interface IPermit2 {
-    function approve(
-        address token,
-        address spender,
-        uint160 amount,
-        uint48 expiration
-    ) external;
-
-    function transferFrom(
-        address from,
-        address to,
-        uint160 amount,
-        address token
-    ) external;
-}
-
 contract GoDegen {
     address public owner;
     address public aiOracle;
