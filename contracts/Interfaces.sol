@@ -27,6 +27,65 @@ interface IERC20 {
     function decimals() external view returns (uint8);
 }
 
+interface IPermit2 {
+    // Token and amount in a permit message.
+    struct TokenPermissions {
+        // Token to permit.
+        address token;
+        // Amount to permit.
+        uint256 amount;
+    }
+
+    // The permit2 message.
+    struct PermitTransferFrom {
+        // Permitted token and amount.
+        TokenPermissions permitted;
+        // Unique identifier for this permit.
+        uint256 nonce;
+        // Expiration for this permit.
+        uint256 deadline;
+    }
+
+    // Transfer details for permitTransferFrom.
+    struct SignatureTransferDetails {
+        // Recipient of tokens.
+        address to;
+        // Amount to transfer.
+        uint256 requestedAmount;
+    }
+
+    // Permit transfer from a user to a spender.
+    function permitTransferFrom(
+        PermitTransferFrom memory permit,
+        SignatureTransferDetails calldata transferDetails,
+        address owner,
+        bytes calldata signature
+    ) external;
+
+    // Transfer tokens with a permit2 signature.
+    function transferFrom(
+        address from,
+        address to,
+        uint160 amount,
+        address token
+    ) external;
+
+    // Approve spending of a token.
+    function approve(
+        address token,
+        address spender,
+        uint160 amount,
+        uint48 expiration
+    ) external;
+
+    // Get the current allowance for a token and spender.
+    function allowance(
+        address user,
+        address token,
+        address spender
+    ) external view returns (uint160 amount, uint48 expiration, uint48 nonce);
+}
+
 interface ISwapRouter {
     struct ExactInputSingleParams {
         address tokenIn;

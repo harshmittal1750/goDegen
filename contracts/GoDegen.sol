@@ -7,12 +7,29 @@ interface IOwnable {
     function owner() external view returns (address);
 }
 
+interface IPermit2 {
+    function approve(
+        address token,
+        address spender,
+        uint160 amount,
+        uint48 expiration
+    ) external;
+
+    function transferFrom(
+        address from,
+        address to,
+        uint160 amount,
+        address token
+    ) external;
+}
+
 contract GoDegen {
     address public owner;
     address public aiOracle;
     ISwapRouter public immutable swapRouter;
     IUniswapV3Factory public immutable factory;
     IQuoterV2 public immutable quoter;
+    IPermit2 public immutable permit2;
 
     uint24[] public SUPPORTED_FEES = [100, 500, 3000, 10000];
     uint256 public constant DEADLINE_EXTENSION = 20 minutes;
@@ -49,6 +66,7 @@ contract GoDegen {
         swapRouter = ISwapRouter(0x2626664c2603336E57B271c5C0b26F421741e481); // SwapRouter02 on Base
         factory = IUniswapV3Factory(0x33128a8fC17869897dcE68Ed026d694621f6FDfD); // Factory on Base
         quoter = IQuoterV2(0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a); // QuoterV2 on Base
+        permit2 = IPermit2(0x000000000022D473030F116dDEE9F6B43aC78BA3); // Permit2 on Base
     }
 
     modifier onlyOwner() {
@@ -194,20 +212,20 @@ contract GoDegen {
             uint256 minAmountOut = (quotedAmount * (10000 - MAX_SLIPPAGE)) /
                 10000;
 
-            // Transfer tokens from sender
-            require(
-                IERC20(_tokenIn).transferFrom(
-                    msg.sender,
-                    address(this),
-                    _amountIn
-                ),
-                "Transfer failed"
+            // Transfer tokens using Permit2
+            permit2.transferFrom(
+                msg.sender,
+                address(this),
+                uint160(_amountIn),
+                _tokenIn
             );
 
-            // Approve router
-            require(
-                IERC20(_tokenIn).approve(address(swapRouter), _amountIn),
-                "Approve failed"
+            // Approve router through Permit2
+            permit2.approve(
+                _tokenIn,
+                address(swapRouter),
+                uint160(_amountIn),
+                uint48(block.timestamp + DEADLINE_EXTENSION)
             );
 
             // Execute swap with the cached quote

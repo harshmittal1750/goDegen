@@ -197,7 +197,7 @@ export const AI_TRADER_ABI = [
       },
       {
         internalType: "bytes",
-        name: "_aiData",
+        name: "",
         type: "bytes",
       },
     ],

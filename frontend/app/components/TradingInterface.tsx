@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { Eip1193Provider } from "ethers";
-import { CONTRACT_ADDRESSES, TOKENS } from "../lib/constants";
+import { CONTRACT_ADDRESSES, TOKENS, POOLS, POOL_FEES } from "../lib/constants";
 import {
   AI_ORACLE_ABI,
   PORTFOLIO_MANAGER_ABI,
@@ -147,60 +147,210 @@ export function TradingInterface() {
       const provider = new ethers.BrowserProvider(
         window.ethereum as Eip1193Provider
       );
-      const goDegenContract = new ethers.Contract(
-        CONTRACT_ADDRESSES.aiTrader,
-        AI_TRADER_ABI,
+
+      // Find the appropriate pool based on token pair
+      let pool: string | null = null;
+      let fee = 500; // Default to 0.05%
+
+      // First check if there's a direct pool in our constants
+      const poolKey = Object.keys(POOLS).find((key) => {
+        const [token1, token2] = key.split("_");
+        return (
+          (TOKENS[token1 as keyof typeof TOKENS] === tokenIn &&
+            TOKENS[token2 as keyof typeof TOKENS] === tokenOut) ||
+          (TOKENS[token1 as keyof typeof TOKENS] === tokenOut &&
+            TOKENS[token2 as keyof typeof TOKENS] === tokenIn)
+        );
+      });
+
+      if (poolKey) {
+        pool = POOLS[poolKey as keyof typeof POOLS];
+        fee = POOL_FEES[poolKey as keyof typeof POOL_FEES] || 500;
+        addLog(`Using known pool ${poolKey} with fee ${fee / 10000}%`, "info");
+      } else {
+        // For V3 pools, try different fee tiers
+        const factoryContract = new ethers.Contract(
+          "0x33128a8fC17869897dcE68Ed026d694621f6FDfD", // UniswapV3Factory on Base
+          ["function getPool(address,address,uint24) view returns (address)"],
+          provider
+        );
+
+        // Try common V3 fee tiers
+        const feeTiers = [100, 500, 3000, 10000]; // 0.01%, 0.05%, 0.3%, 1%
+        let foundPool = false;
+
+        for (const feeTier of feeTiers) {
+          const poolAddress = await factoryContract.getPool(
+            tokenIn,
+            tokenOut,
+            feeTier
+          );
+          if (poolAddress && poolAddress !== ethers.ZeroAddress) {
+            pool = poolAddress;
+            fee = feeTier;
+            foundPool = true;
+            addLog(
+              `Found V3 pool with ${feeTier / 10000}% fee: ${poolAddress}`,
+              "info"
+            );
+            break;
+          }
+        }
+
+        if (!foundPool) {
+          throw new Error("No Uniswap V3 pool found for this token pair");
+        }
+      }
+
+      // For V3 pools, suggest minimum amounts based on fee tier
+      const minAmount =
+        fee === 100
+          ? "1" // 0.01% fee
+          : fee === 500
+          ? "0.5" // 0.05% fee
+          : fee === 3000
+          ? "0.3" // 0.3% fee
+          : "0.1"; // 1% fee or default
+
+      if (parseFloat(amount) < parseFloat(minAmount)) {
+        throw new Error(
+          `For this V3 pool (${
+            fee / 10000
+          }% fee), minimum suggested trade amount is ${minAmount} USDC`
+        );
+      }
+
+      // Verify pool exists by checking USDC balance
+      const usdcContract = new ethers.Contract(
+        TOKENS.USDC,
+        ["function balanceOf(address) view returns (uint256)"],
         provider
       );
 
-      // First find the best pool
-      addLog("Finding best pool...", "info");
-      const [pool, fee] = await goDegenContract.findBestPool(tokenIn, tokenOut);
-      if (!pool) {
-        throw new Error("No liquidity pool found");
+      const poolLiquidity = await usdcContract.balanceOf(pool);
+      const formattedLiquidity = ethers.formatUnits(poolLiquidity, 6);
+      addLog(
+        `Pool USDC liquidity: ${formattedLiquidity} USDC`,
+        Number(formattedLiquidity) > 0 ? "success" : "warning"
+      );
+
+      if (poolLiquidity === BigInt(0)) {
+        throw new Error("Pool has no USDC liquidity");
       }
-      addLog(`Found pool with fee tier ${fee / 10000}%`, "success");
+
+      // If trying to trade more than 10% of pool liquidity, reject
+      const amountIn = ethers.parseUnits(amount, 6);
+      if (amountIn > (poolLiquidity * BigInt(10)) / BigInt(100)) {
+        throw new Error(
+          `Trade amount too large for pool liquidity. Maximum recommended: ${ethers.formatUnits(
+            (poolLiquidity * BigInt(10)) / BigInt(100),
+            6
+          )} USDC`
+        );
+      }
 
       // Get quote to check if trade is possible
       const quoterContract = new ethers.Contract(
         "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a", // QuoterV2 on Base
         [
-          "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+          "function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+          "function quoteExactInput(bytes memory path, uint256 amountIn) external returns (uint256 amountOut, uint160[] memory sqrtPriceX96AfterList, uint32[] memory initializedTicksCrossedList, uint256 gasEstimate)",
         ],
-        provider
+        provider // Use provider instead of signer since we'll use staticCall
       );
 
-      const amountIn = ethers.parseUnits(amount, 6); // USDC has 6 decimals
       addLog(`Getting quote for ${amount} USDC...`, "info");
 
       try {
-        const [amountOut] = await quoterContract.quoteExactInputSingle(
+        // Try single pool quote first as it's simpler
+        const params = {
           tokenIn,
           tokenOut,
-          fee,
-          amountIn,
-          0 // sqrtPriceLimitX96
-        );
+          amountIn: ethers.parseUnits(amount, 6), // USDC has 6 decimals
+          fee: fee,
+          sqrtPriceLimitX96: BigInt(0),
+        };
 
-        addLog(
-          `Quote received: ${ethers.formatUnits(amountOut, 18)} tokens out`,
-          "success"
-        );
-        return amountOut > 0;
+        try {
+          addLog(
+            `Attempting single pool quote with fee tier ${fee / 10000}%`,
+            "info"
+          );
+          const [amountOut] =
+            await quoterContract.quoteExactInputSingle.staticCall(params);
+
+          if (amountOut === BigInt(0)) {
+            throw new Error(
+              "Quote returned zero tokens - insufficient liquidity"
+            );
+          }
+
+          addLog(
+            `Quote received: ${ethers.formatUnits(amountOut, 18)} tokens out`,
+            "success"
+          );
+
+          return true;
+        } catch (error) {
+          // If single pool quote fails, try path-based quote
+          addLog(
+            `Single pool quote failed (${
+              error instanceof Error ? error.message : "unknown error"
+            }), trying path-based quote...`,
+            "info"
+          );
+
+          // Encode the path for the quote
+          // For Uniswap V3 pools, path format: [tokenIn (20 bytes) + fee (3 bytes) + tokenOut (20 bytes)]
+          const encodedPath = ethers.concat([
+            ethers.getBytes(tokenIn),
+            new Uint8Array([fee & 0xff, (fee >> 8) & 0xff, (fee >> 16) & 0xff]),
+            ethers.getBytes(tokenOut),
+          ]);
+
+          const [amountOut] = await quoterContract.quoteExactInput.staticCall(
+            encodedPath,
+            ethers.parseUnits(amount, 6)
+          );
+
+          if (amountOut === BigInt(0)) {
+            throw new Error(
+              "Quote returned zero tokens - insufficient liquidity"
+            );
+          }
+
+          addLog(
+            `Quote received: ${ethers.formatUnits(amountOut, 18)} tokens out`,
+            "success"
+          );
+
+          return true;
+        }
       } catch (error: Error | unknown) {
         console.error("Quote error:", error);
-        // Check if it's a specific error we can handle
-        if (
-          error instanceof Error &&
-          error.message?.includes("insufficient liquidity")
-        ) {
-          throw new Error("Insufficient liquidity in pool");
+
+        // Handle specific error cases
+        if (error instanceof Error) {
+          if (error.message?.includes("missing revert data")) {
+            throw new Error(
+              "Failed to get quote - pool may not be initialized or may have insufficient liquidity. Please try a smaller amount or verify the pool exists."
+            );
+          }
+
+          if (error.message?.includes("insufficient liquidity")) {
+            throw new Error(
+              "Pool has insufficient liquidity for this trade amount. Please try a smaller amount."
+            );
+          }
+
+          // For other errors, provide a more detailed error message
+          throw new Error(
+            `Failed to get quote: ${error.message} - Please try a different amount or check pool status`
+          );
         }
-        throw new Error(
-          `Failed to get quote: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`
-        );
+
+        // For unknown error types
+        throw new Error("An unexpected error occurred while getting the quote");
       }
     } catch (error) {
       console.error("Error checking liquidity:", error);
@@ -209,21 +359,60 @@ export function TradingInterface() {
   };
 
   const executeTrade = async (tokenAddress: string) => {
-    const prediction = predictions[tokenAddress];
+    console.log("Starting trade execution for", tokenAddress);
+    let prediction = predictions[tokenAddress];
     const tokenSettings = settings[tokenAddress];
-    if (!prediction || !tokenSettings || !tokenSettings.enabled) return;
+
+    console.log("Current settings:", tokenSettings);
+    console.log("Current prediction:", prediction);
+
+    // If prediction is missing, try to fetch it first
+    if (!prediction) {
+      addLog("No prediction data found, fetching now...", "info", tokenAddress);
+      try {
+        await fetchPrediction(tokenAddress);
+        prediction = predictions[tokenAddress];
+        if (!prediction) {
+          throw new Error("Failed to fetch prediction data");
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to fetch prediction";
+        setError(errorMessage);
+        addLog(errorMessage, "error", tokenAddress);
+        return;
+      }
+    }
+
+    if (!tokenSettings || !tokenSettings.enabled) {
+      console.log("Trade stopped: Missing settings or trading not enabled", {
+        hasSettings: !!tokenSettings,
+        isEnabled: tokenSettings?.enabled,
+      });
+      const message = !tokenSettings
+        ? "Token settings not found"
+        : "Trading is not enabled for this token";
+      setError(message);
+      addLog(message, "error", tokenAddress);
+      return;
+    }
 
     // Add validation for trade amount
     if (
       !tokenSettings.tradeAmount ||
       parseFloat(tokenSettings.tradeAmount) <= 0
     ) {
+      console.log(
+        "Trade stopped: Invalid trade amount",
+        tokenSettings.tradeAmount
+      );
       setError("Please enter a valid trade amount");
       addLog("Trade failed: Invalid trade amount", "error", tokenAddress);
       return;
     }
 
     try {
+      console.log("Proceeding with trade execution");
       setIsLoading(true);
       setError(null);
 
@@ -236,6 +425,7 @@ export function TradingInterface() {
       );
       const signer = await provider.getSigner();
       const userAddress = await signer.getAddress();
+      console.log("Connected with address:", userAddress);
 
       // First check if tokens are whitelisted
       const aiTraderContract = new ethers.Contract(
@@ -245,12 +435,19 @@ export function TradingInterface() {
       );
 
       addLog("Checking token whitelist status...", "info", tokenAddress);
+      console.log("Checking whitelist for USDC and", tokenAddress);
+
       const isUSDCWhitelisted = await aiTraderContract.whitelistedTokens(
         TOKENS.USDC
       );
       const isTokenWhitelisted = await aiTraderContract.whitelistedTokens(
         tokenAddress
       );
+
+      console.log("Whitelist status:", {
+        USDC: isUSDCWhitelisted,
+        Token: isTokenWhitelisted,
+      });
 
       if (!isUSDCWhitelisted || !isTokenWhitelisted) {
         throw new Error("One or both tokens are not whitelisted for trading");
@@ -337,7 +534,7 @@ export function TradingInterface() {
         tokenAddress
       );
 
-      const amount = ethers.parseUnits(tokenSettings.tradeAmount, 6);
+      const amountIn = ethers.parseUnits(tokenSettings.tradeAmount, 6);
 
       // First check USDC balance
       addLog("Checking USDC balance...", "info", tokenAddress);
@@ -352,7 +549,7 @@ export function TradingInterface() {
       );
 
       const balance = await usdcContract.balanceOf(userAddress);
-      if (balance < amount) {
+      if (balance < amountIn) {
         throw new Error(
           `Insufficient USDC balance. You have ${ethers.formatUnits(
             balance,
@@ -369,7 +566,7 @@ export function TradingInterface() {
         CONTRACT_ADDRESSES.aiTrader
       );
 
-      if (allowance < amount) {
+      if (allowance < amountIn) {
         addLog("Approving USDC spending...", "info", tokenAddress);
         const approveTx = await usdcContract.approve(
           CONTRACT_ADDRESSES.aiTrader,
@@ -396,31 +593,134 @@ export function TradingInterface() {
         ): Promise<ethers.ContractTransactionResponse>;
       };
 
-      const tx = await aiTraderWithSigner.executeManualTrade(
-        TOKENS.USDC,
-        tokenAddress,
-        amount,
-        userAddress,
-        {
-          gasLimit: 1000000, // Add gas limit to prevent transaction failures
+      try {
+        // Log the parameters we're using for the trade
+        const amountIn = ethers.parseUnits(tokenSettings.tradeAmount, 6); // USDC has 6 decimals
+
+        // Check minimum amount (0.1 USDC)
+        const MIN_AMOUNT = ethers.parseUnits("0.1", 6);
+        if (amountIn < MIN_AMOUNT) {
+          throw new Error(`Amount too small. Minimum trade amount is 0.1 USDC`);
         }
-      );
 
-      addLog("Waiting for transaction confirmation...", "info", tokenAddress);
-      const receipt = await tx.wait();
-      if (!receipt) {
-        throw new Error("Failed to get transaction receipt");
+        // Debug log the exact values being used
+        addLog(
+          `Debug - Raw values:
+           TokenIn: ${TOKENS.USDC}
+           TokenOut: ${tokenAddress}
+           AmountIn: ${amountIn.toString()} (${tokenSettings.tradeAmount} USDC)
+           Recipient: ${userAddress}
+           Min Required: ${MIN_AMOUNT.toString()} (0.1 USDC)`,
+          "info",
+          tokenAddress
+        );
+
+        // First try to estimate gas to see if the transaction will fail
+        const txData = aiTraderWithSigner.interface.encodeFunctionData(
+          "executeManualTrade",
+          [TOKENS.USDC, tokenAddress, amountIn, userAddress]
+        );
+
+        // Debug log the encoded transaction data
+        addLog(`Debug - Encoded tx data: ${txData}`, "info", tokenAddress);
+
+        addLog(`Estimating gas for transaction...`, "info", tokenAddress);
+
+        // Try to simulate the transaction first
+        try {
+          const simulatedResult = await provider.call({
+            from: userAddress,
+            to: CONTRACT_ADDRESSES.aiTrader,
+            data: txData,
+          });
+
+          addLog(
+            `Transaction simulation result: ${simulatedResult}`,
+            "info",
+            tokenAddress
+          );
+        } catch (simError) {
+          console.error("Simulation error:", simError);
+          if (simError instanceof Error) {
+            throw new Error(
+              `Transaction would fail: ${simError.message}. Try increasing the amount or checking pool liquidity.`
+            );
+          }
+          throw simError;
+        }
+
+        const gasEstimate = await provider.estimateGas({
+          from: userAddress,
+          to: CONTRACT_ADDRESSES.aiTrader,
+          data: txData,
+          value: 0, // No ETH being sent
+        });
+
+        addLog(
+          `Estimated gas: ${gasEstimate.toString()}`,
+          "info",
+          tokenAddress
+        );
+
+        // Add 20% buffer to gas estimate
+        const gasLimit = Number((gasEstimate * BigInt(120)) / BigInt(100));
+
+        const tx = await aiTraderWithSigner.executeManualTrade(
+          TOKENS.USDC,
+          tokenAddress,
+          amountIn,
+          userAddress,
+          {
+            gasLimit,
+          }
+        );
+
+        addLog("Waiting for transaction confirmation...", "info", tokenAddress);
+        const receipt = await tx.wait();
+
+        if (!receipt) {
+          throw new Error("Failed to get transaction receipt");
+        }
+
+        if (receipt.status === 0) {
+          throw new Error(
+            "Transaction failed. This might be due to slippage or insufficient liquidity. Try with a smaller amount."
+          );
+        }
+
+        addLog(
+          `Trade executed successfully! TX: ${receipt.hash}`,
+          "success",
+          tokenAddress
+        );
+
+        setLastTradeTimes((prev) => ({
+          ...prev,
+          [tokenAddress]: Date.now(),
+        }));
+      } catch (error) {
+        console.error("Trade execution error:", error);
+
+        // Handle specific error cases
+        if (error instanceof Error) {
+          if (error.message.includes("insufficient allowance")) {
+            throw new Error(
+              "USDC allowance is insufficient. Please approve USDC spending first."
+            );
+          }
+          if (error.message.includes("insufficient balance")) {
+            throw new Error("Insufficient USDC balance for this trade.");
+          }
+          if (error.message.includes("execution reverted")) {
+            throw new Error(
+              "Transaction reverted. This might be due to high slippage or pool conditions changed. Try with a smaller amount or refresh quotes."
+            );
+          }
+        }
+
+        // Re-throw the error to be caught by the outer catch block
+        throw error;
       }
-      addLog(
-        `Trade executed successfully! TX: ${receipt.hash}`,
-        "success",
-        tokenAddress
-      );
-
-      setLastTradeTimes((prev) => ({
-        ...prev,
-        [tokenAddress]: Date.now(),
-      }));
     } catch (error) {
       console.error("Error executing trade:", error);
       const errorMessage =
@@ -886,9 +1186,9 @@ export function TradingInterface() {
           </div>
         ))}
         ,{/* Trading Logs */}
-        <div className="mt-6">
+        <div className="container mt-6">
           <h4 className="text-lg font-semibold mb-2">Trading Logs</h4>
-          <div className="h-64 overflow-y-auto border rounded-lg p-4 space-y-2">
+          <div className=" h-64 overflow-y-auto border rounded-lg p-4 space-y-2">
             {tradingLogs.map((log, index) => (
               <div
                 key={index}

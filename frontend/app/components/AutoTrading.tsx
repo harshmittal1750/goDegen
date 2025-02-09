@@ -6,8 +6,6 @@ import {
   CONTRACT_ADDRESSES,
   TOKENS,
   AI_TRADER_ABI,
-  POOLS,
-  // POOL_FEES,
 } from "../lib/constants";
 
 interface AutoTradingSettings {
@@ -108,16 +106,17 @@ export function AutoTrading() {
       const signer = await provider.getSigner();
       const userAddress = await signer.getAddress();
 
-      // Get AI prediction
+      // Get AI prediction for CBBTC
       const oracleContract = new ethers.Contract(
         CONTRACT_ADDRESSES.aiOracle,
         AI_ORACLE_ABI,
         provider
       );
 
-      const prediction = await oracleContract.getPrediction(TOKENS.AERO);
+      // Use CBBTC instead of AERO
+      const prediction = await oracleContract.getPrediction(TOKENS.CBBTC);
       addLog(
-        `Received prediction - Confidence: ${prediction.confidence}%, Risk: ${prediction.riskScore}`
+        `Received prediction for CBBTC - Confidence: ${prediction.confidence}%, Risk: ${prediction.riskScore}`
       );
 
       // Check if prediction meets criteria
@@ -136,21 +135,13 @@ export function AutoTrading() {
         return;
       }
 
-      // Temporarily bypass price direction check for testing
-      // if (Number(prediction.priceDirection) <= 0) {
-      //   addLog("No positive price direction - skipping trade", "info");
-      //   return;
-      // }
-      addLog("Bypassing price direction check for testing", "warning");
-
-      // Execute trade
+      // Check USDC balance before trading
       const portfolioContract = new ethers.Contract(
         CONTRACT_ADDRESSES.portfolioManager,
         PORTFOLIO_MANAGER_ABI,
         signer
       );
 
-      // Check USDC balance before trading
       const usdcBalance = await portfolioContract.getTokenBalance(
         userAddress,
         TOKENS.USDC
@@ -202,11 +193,11 @@ export function AutoTrading() {
       const isUSDCWhitelisted = await aiTraderContract.whitelistedTokens(
         TOKENS.USDC
       );
-      const isDICKBUTTWhitelisted = await aiTraderContract.whitelistedTokens(
-        TOKENS.DICKBUTT
+      const isCBBTCWhitelisted = await aiTraderContract.whitelistedTokens(
+        TOKENS.CBBTC
       );
 
-      if (!isUSDCWhitelisted || !isDICKBUTTWhitelisted) {
+      if (!isUSDCWhitelisted || !isCBBTCWhitelisted) {
         throw new Error("One or both tokens are not whitelisted for trading");
       }
 
@@ -221,65 +212,57 @@ export function AutoTrading() {
         );
       }
 
-      // Check liquidity using quoter
-      // const quoterContract = new ethers.Contract(
-      //   "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a", // QuoterV2 on Base
-      //   [
-      //     "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
-      //   ],
-      //   signer
-      // );
+      // Use the known CBBTC/USDC pool
+      const CBBTC_USDC_POOL = "0xfbb6eed8e7aa03b138556eedaf5d271a5e1e43ef";
+      const POOL_FEE = 500; // 0.05% fee tier for this pool
 
-      const amountIn = ethers.parseUnits(settings.tradeAmount, 6); // USDC has 6 decimals
-      addLog("Checking pool liquidity...", "info");
+      addLog(`Using CBBTC/USDC pool: ${CBBTC_USDC_POOL}`, "info");
+
+      // Get quote to verify trade
+      const quoterContract = new ethers.Contract(
+        "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a", // QuoterV2 on Base
+        [
+          "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+        ],
+        provider
+      );
 
       try {
-        // Instead of using Uniswap V3, use Aerodrome pool
-        addLog("Using Aerodrome DICKBUTT/USDC pool...", "info");
-        const pool = POOLS.DICKBUTT_USDC_AERO;
+        addLog("Getting quote for trade...", "info");
 
-        if (!pool) {
-          throw new Error("Pool not configured");
+        // Call the quote function with individual parameters
+        const [amountOut] =
+          await quoterContract.quoteExactInputSingle.staticCall(
+            TOKENS.USDC,
+            TOKENS.CBBTC,
+            POOL_FEE,
+            tradeAmount,
+            0,
+            { gasLimit: 500000 }
+          );
+
+        if (amountOut <= 0) {
+          throw new Error("Quote returned zero output amount");
         }
 
-        addLog(`Using Aerodrome pool ${pool}`, "info");
+        const formattedAmountOut = ethers.formatUnits(amountOut, 8); // CBBTC has 8 decimals
+        addLog(
+          `Pool has sufficient liquidity. Expected output: ${formattedAmountOut} CBBTC`,
+          "success"
+        );
 
-        // First approve USDC spending if needed
-        const usdcContract = new ethers.Contract(
-          TOKENS.USDC,
-          [
-            "function approve(address spender, uint256 amount) external returns (bool)",
-            "function allowance(address owner, address spender) external view returns (uint256)",
-            "function balanceOf(address account) external view returns (uint256)",
-          ],
+        // Now execute the trade
+        const aiTraderContract = new ethers.Contract(
+          CONTRACT_ADDRESSES.aiTrader,
+          AI_TRADER_ABI,
           signer
         );
 
-        // Check allowance
-        const allowance = await usdcContract.allowance(
-          userAddress,
-          CONTRACT_ADDRESSES.aiTrader
-        );
-
-        if (allowance < amountIn) {
-          addLog("Approving USDC spending...", "info");
-          const approveTx = await usdcContract.approve(
-            CONTRACT_ADDRESSES.aiTrader,
-            ethers.MaxUint256 // Infinite approval
-          );
-          addLog("Waiting for approval transaction...", "info");
-          await approveTx.wait();
-          addLog("USDC approved successfully!", "success");
-        }
-
-        // Now execute the trade directly without quoting
-        addLog("Executing trade through AI Trader...", "info");
-
-        // Execute the trade directly through the contract
+        addLog("Executing trade...", "info");
         const tx = await aiTraderContract.executeManualTrade(
           TOKENS.USDC,
-          TOKENS.DICKBUTT,
-          amountIn,
+          TOKENS.CBBTC,
+          tradeAmount,
           userAddress,
           {
             gasLimit: 1000000,
@@ -289,9 +272,28 @@ export function AutoTrading() {
         addLog("Waiting for transaction confirmation...");
         await tx.wait();
         addLog(`Trade executed successfully! TX: ${tx.hash}`, "success");
-      } catch (error) {
+      } catch (quoteError) {
+        console.error("Quote error:", quoteError);
+        // Add more specific error handling
+        if (quoteError instanceof Error) {
+          if (quoteError.message.includes("missing revert data")) {
+            throw new Error(
+              "Failed to get quote - pool may not be initialized or may have insufficient liquidity"
+            );
+          }
+          if (quoteError.message.includes("execution reverted")) {
+            throw new Error(
+              "Quote execution reverted - please try a smaller amount or check pool status"
+            );
+          }
+          if (quoteError.message.includes("STF")) {
+            throw new Error(
+              "Transfer failed - please check your USDC balance and allowance"
+            );
+          }
+        }
         throw new Error(
-          "Failed to check liquidity: " + (error as Error).message
+          "Failed to quote trade - please check pool liquidity and try again"
         );
       }
     } catch (error) {
@@ -396,70 +398,64 @@ export function AutoTrading() {
       const signer = await provider.getSigner();
       const userAddress = await signer.getAddress();
 
-      // Check liquidity using quoter
-      const quoterContract = new ethers.Contract(
-        "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a", // QuoterV2 on Base
-        [
-          "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
-        ],
-        signer
-      );
-
       const amountIn = ethers.parseUnits(settings.tradeAmount, 6); // USDC has 6 decimals
       addLog("Checking pool liquidity...", "info");
 
       try {
-        // First find the best pool using GoDegen contract
-        const aiTraderContract = new ethers.Contract(
-          CONTRACT_ADDRESSES.aiTrader,
-          AI_TRADER_ABI,
-          signer
+        // Use the known CBBTC/USDC pool
+        const CBBTC_USDC_POOL = "0xfbb6eed8e7aa03b138556eedaf5d271a5e1e43ef";
+        const POOL_FEE = 500; // 0.05% fee tier for this pool
+
+        addLog(`Using CBBTC/USDC pool: ${CBBTC_USDC_POOL}`, "info");
+
+        // Get quote to verify trade
+        const quoterContract = new ethers.Contract(
+          "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a", // QuoterV2 on Base
+          [
+            "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+          ],
+          provider
         );
 
-        addLog("Finding best liquidity pool...", "info");
-        const [pool, fee] = await aiTraderContract.findBestPool(
-          TOKENS.USDC,
-          TOKENS.DICKBUTT
-        );
-
-        if (!pool || pool === ethers.ZeroAddress) {
-          throw new Error("No liquidity pool found");
-        }
-
-        addLog(`Found pool with fee tier ${fee}`, "info");
-
-        // Now try to quote the trade with error handling
         try {
+          addLog("Getting quote for trade...", "info");
+
+          // Call the quote function with individual parameters
           const [amountOut] =
             await quoterContract.quoteExactInputSingle.staticCall(
               TOKENS.USDC,
-              TOKENS.DICKBUTT,
-              fee,
+              TOKENS.CBBTC,
+              POOL_FEE,
               amountIn,
               0,
               { gasLimit: 500000 }
             );
 
           if (amountOut <= 0) {
-            throw new Error("Insufficient liquidity in pool");
+            throw new Error("Quote returned zero output amount");
           }
 
-          const formattedAmountOut = ethers.formatUnits(amountOut, 18); // DICKBUTT has 18 decimals
+          const formattedAmountOut = ethers.formatUnits(amountOut, 8); // CBBTC has 8 decimals
           addLog(
-            `Pool has sufficient liquidity. Expected output: ${formattedAmountOut} DICKBUTT`,
+            `Pool has sufficient liquidity. Expected output: ${formattedAmountOut} CBBTC`,
             "success"
           );
 
           // Now execute the trade
+          const aiTraderContract = new ethers.Contract(
+            CONTRACT_ADDRESSES.aiTrader,
+            AI_TRADER_ABI,
+            signer
+          );
+
           addLog("Executing trade...", "info");
           const tx = await aiTraderContract.executeManualTrade(
             TOKENS.USDC,
-            TOKENS.DICKBUTT,
+            TOKENS.CBBTC,
             amountIn,
             userAddress,
             {
               gasLimit: 1000000,
-              value: 0,
             }
           );
 
@@ -468,8 +464,26 @@ export function AutoTrading() {
           addLog(`Trade executed successfully! TX: ${tx.hash}`, "success");
         } catch (quoteError) {
           console.error("Quote error:", quoteError);
+          // Add more specific error handling
+          if (quoteError instanceof Error) {
+            if (quoteError.message.includes("missing revert data")) {
+              throw new Error(
+                "Failed to get quote - pool may not be initialized or may have insufficient liquidity"
+              );
+            }
+            if (quoteError.message.includes("execution reverted")) {
+              throw new Error(
+                "Quote execution reverted - please try a smaller amount or check pool status"
+              );
+            }
+            if (quoteError.message.includes("STF")) {
+              throw new Error(
+                "Transfer failed - please check your USDC balance and allowance"
+              );
+            }
+          }
           throw new Error(
-            "Failed to quote trade - insufficient liquidity or invalid pool"
+            "Failed to quote trade - please check pool liquidity and try again"
           );
         }
       } catch (error) {
@@ -477,10 +491,6 @@ export function AutoTrading() {
           "Failed to check liquidity: " + (error as Error).message
         );
       }
-
-      // Execute a test trade
-      addLog("Executing test trade...", "info");
-      await checkAndExecuteTrade();
 
       addLog("Test auto trade completed successfully!", "success");
     } catch (error) {
