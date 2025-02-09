@@ -72,23 +72,53 @@ contract GoDegen {
         address _tokenOut
     ) public view returns (address pool, uint24 fee) {
         uint256 bestLiquidity = 0;
+        bool foundPool = false;
 
-        for (uint256 i = 0; i < SUPPORTED_FEES.length; i++) {
+        // First try known fee tiers in order of preference
+        uint24[4] memory preferredFees = [
+            uint24(500),
+            uint24(3000),
+            uint24(100),
+            uint24(10000)
+        ]; // 0.05%, 0.3%, 0.01%, 1%
+
+        for (uint256 i = 0; i < preferredFees.length; i++) {
             address currentPool = factory.getPool(
                 _tokenIn,
                 _tokenOut,
-                SUPPORTED_FEES[i]
+                preferredFees[i]
             );
             if (currentPool != address(0)) {
                 uint256 liquidity = IERC20(_tokenIn).balanceOf(currentPool);
                 if (liquidity > bestLiquidity) {
                     bestLiquidity = liquidity;
                     pool = currentPool;
-                    fee = SUPPORTED_FEES[i];
+                    fee = preferredFees[i];
+                    foundPool = true;
                 }
             }
         }
-        require(pool != address(0), "No pool found");
+
+        // If no pool found with liquidity, return the first existing pool
+        if (!foundPool) {
+            for (uint256 i = 0; i < preferredFees.length; i++) {
+                address currentPool = factory.getPool(
+                    _tokenIn,
+                    _tokenOut,
+                    preferredFees[i]
+                );
+                if (currentPool != address(0)) {
+                    pool = currentPool;
+                    fee = preferredFees[i];
+                    foundPool = true;
+                    break;
+                }
+            }
+        }
+
+        require(foundPool, "No pool found for token pair");
+        require(pool != address(0), "Invalid pool address");
+        return (pool, fee);
     }
 
     // Helper function to validate basic trade parameters
@@ -111,25 +141,46 @@ contract GoDegen {
         uint256 _amountIn,
         uint24 _fee
     ) internal returns (uint256 quotedAmount, bytes32 quoteKey) {
-        (uint256 amountOut, , , ) = quoter.quoteExactInputSingle(
-            _tokenIn,
-            _tokenOut,
-            _fee,
-            _amountIn,
-            0
-        );
-        require(amountOut > 0, "Quote returned zero amount");
+        // First verify the pool exists
+        address pool = factory.getPool(_tokenIn, _tokenOut, _fee);
+        require(pool != address(0), "Pool does not exist");
 
-        quoteKey = keccak256(
-            abi.encodePacked(_tokenIn, _tokenOut, _amountIn, _fee)
-        );
-        poolQuotes[quoteKey] = PoolQuote({
-            timestamp: block.timestamp,
-            quotedAmount: amountOut,
-            fee: _fee
-        });
+        // Check if pool has liquidity
+        uint256 poolLiquidity = IERC20(_tokenIn).balanceOf(pool);
+        require(poolLiquidity > 0, "Pool has no liquidity");
 
-        return (amountOut, quoteKey);
+        // Try to get quote with error handling
+        try
+            quoter.quoteExactInputSingle(
+                _tokenIn,
+                _tokenOut,
+                _fee,
+                _amountIn,
+                0 // sqrtPriceLimitX96
+            )
+        returns (
+            uint256 amountOut,
+            uint160 /*sqrtPriceX96After*/,
+            uint32 /*initializedTicksCrossed*/,
+            uint256 /*gasEstimate*/
+        ) {
+            require(amountOut > 0, "Quote returned zero amount");
+
+            quoteKey = keccak256(
+                abi.encodePacked(_tokenIn, _tokenOut, _amountIn, _fee)
+            );
+            poolQuotes[quoteKey] = PoolQuote({
+                timestamp: block.timestamp,
+                quotedAmount: amountOut,
+                fee: _fee
+            });
+
+            return (amountOut, quoteKey);
+        } catch Error(string memory reason) {
+            revert(string(abi.encodePacked("Quote failed: ", reason)));
+        } catch {
+            revert("Pool may not be initialized - try a different fee tier");
+        }
     }
 
     // Helper function to execute swap
