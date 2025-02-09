@@ -203,7 +203,7 @@
 					},
 					{
 						"internalType": "bytes",
-						"name": "_aiData",
+						"name": "",
 						"type": "bytes"
 					}
 				],
@@ -365,11 +365,11 @@
 	},
 	"sources": {
 		"contracts/GoDegen.sol": {
-			"keccak256": "0x6b3b1405be08dd9b0d47331af99672fe96207f14f38bae6702e10f7f1453f74e",
+			"keccak256": "0x1421343853f88aed2b1bde6a66803d8ffed769cf488c036fddcade6ef248aa6c",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://229bc725e9f0ad4b1bf069617e58817a6c82f96b0619d8d3f41b70d71d987488",
-				"dweb:/ipfs/QmdrJQfSZ9B7iqn2BiuMNKCUno5sqFXhXnLFsJwc1AXncw"
+				"bzz-raw://513b0ccbae708a1d42f032dc100856de5e9f81ae18680fa1d60cf147a17c0149",
+				"dweb:/ipfs/Qmc5qj6y2FELY5WD7RGEuS3LtZw891z9x8b8Z1duxDk4X4"
 			]
 		},
 		"contracts/Interfaces.sol": {
