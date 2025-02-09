@@ -47,10 +47,10 @@ contract GoDegen {
     ) {
         owner = msg.sender;
         aiOracle = _oracle;
-        swapRouter = ISwapRouter(0x2626664c2603336E57B271c5C0b26F421741e481); // SwapRouter02 on Base
-        factory = IUniswapV3Factory(0x33128a8fC17869897dcE68Ed026d694621f6FDfD); // Factory on Base
-        quoter = IQuoterV2(0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a); // QuoterV2 on Base
-        permit2 = IPermit2(0x000000000022D473030F116dDEE9F6B43aC78BA3); // Permit2 on Base
+        swapRouter = ISwapRouter(0x2626664c2603336E57B271c5C0b26F421741e481);
+        factory = IUniswapV3Factory(0x33128a8fC17869897dcE68Ed026d694621f6FDfD);
+        quoter = IQuoterV2(0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a);
+        permit2 = IPermit2(0x000000000022D473030F116dDEE9F6B43aC78BA3);
     }
 
     modifier onlyOwner() {
@@ -91,64 +91,69 @@ contract GoDegen {
         require(pool != address(0), "No pool found");
     }
 
-    function executeTrade(
+    // Helper function to validate basic trade parameters
+    function validateTradeParams(
         address _tokenIn,
         address _tokenOut,
-        uint256 _amountIn,
-        address _recipient,
-        bytes calldata /*_aiData*/
-    ) external onlyAIOracle returns (uint256 amountOut) {
+        uint256 _amountIn
+    ) internal view {
         require(
             whitelistedTokens[_tokenIn] && whitelistedTokens[_tokenOut],
             "Tokens not whitelisted"
         );
-        require(_amountIn >= MIN_TRADE_AMOUNT, "Amount too low");
+        require(_amountIn >= MIN_TRADE_AMOUNT, "Amount too low (min 0.1 USDC)");
+    }
 
-        // Find best pool and fee
-        (, uint24 fee) = findBestPool(_tokenIn, _tokenOut);
-
-        // Get quote for minimum amount out
-        (uint256 quotedAmount, , , ) = quoter.quoteExactInputSingle(
+    // Helper function to get quote from pool
+    function getQuoteFromPool(
+        address _tokenIn,
+        address _tokenOut,
+        uint256 _amountIn,
+        uint24 _fee
+    ) internal returns (uint256 quotedAmount, bytes32 quoteKey) {
+        (uint256 amountOut, , , ) = quoter.quoteExactInputSingle(
             _tokenIn,
             _tokenOut,
-            fee,
+            _fee,
             _amountIn,
             0
         );
+        require(amountOut > 0, "Quote returned zero amount");
 
-        uint256 minAmountOut = (quotedAmount * (10000 - MAX_SLIPPAGE)) / 10000;
+        quoteKey = keccak256(
+            abi.encodePacked(_tokenIn, _tokenOut, _amountIn, _fee)
+        );
+        poolQuotes[quoteKey] = PoolQuote({
+            timestamp: block.timestamp,
+            quotedAmount: amountOut,
+            fee: _fee
+        });
 
-        // Transfer tokens from portfolio manager
-        IERC20(_tokenIn).transferFrom(msg.sender, address(this), _amountIn);
+        return (amountOut, quoteKey);
+    }
 
-        // Approve router
-        IERC20(_tokenIn).approve(address(swapRouter), _amountIn);
-
-        // Execute swap
+    // Helper function to execute swap
+    function executeSwap(
+        address _tokenIn,
+        address _tokenOut,
+        uint256 _amountIn,
+        uint256 _minAmountOut,
+        address _recipient,
+        uint24 _fee
+    ) internal returns (uint256) {
         ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
             .ExactInputSingleParams({
                 tokenIn: _tokenIn,
                 tokenOut: _tokenOut,
-                fee: fee,
+                fee: _fee,
                 recipient: _recipient,
                 deadline: block.timestamp + DEADLINE_EXTENSION,
                 amountIn: _amountIn,
-                amountOutMinimum: minAmountOut,
+                amountOutMinimum: _minAmountOut,
                 sqrtPriceLimitX96: 0
             });
 
-        amountOut = swapRouter.exactInputSingle(params);
-
-        emit TradeExecuted(
-            _tokenIn,
-            _tokenOut,
-            _amountIn,
-            amountOut,
-            _recipient,
-            fee
-        );
-
-        return amountOut;
+        return swapRouter.exactInputSingle(params);
     }
 
     function executeManualTrade(
@@ -156,54 +161,32 @@ contract GoDegen {
         address _tokenOut,
         uint256 _amountIn,
         address _recipient
-    ) external returns (uint256 amountOut) {
-        require(
-            whitelistedTokens[_tokenIn] && whitelistedTokens[_tokenOut],
-            "Tokens not whitelisted"
-        );
-        require(_amountIn >= MIN_TRADE_AMOUNT, "Amount too low (min 0.1 USDC)");
+    ) public returns (uint256 amountOut) {
+        // Validate basic parameters
+        validateTradeParams(_tokenIn, _tokenOut, _amountIn);
 
         // Find best pool and fee
         (, uint24 fee) = findBestPool(_tokenIn, _tokenOut);
 
-        // Get quote for minimum amount out
+        // Get quote and cache it
+        (uint256 quotedAmount, bytes32 quoteKey) = getQuoteFromPool(
+            _tokenIn,
+            _tokenOut,
+            _amountIn,
+            fee
+        );
+
+        uint256 minAmountOut = (quotedAmount * (10000 - MAX_SLIPPAGE)) / 10000;
+
+        // Transfer tokens using Permit2
         try
-            quoter.quoteExactInputSingle(
-                _tokenIn,
-                _tokenOut,
-                fee,
-                _amountIn,
-                0 // sqrtPriceLimitX96
-            )
-        returns (
-            uint256 quotedAmount,
-            uint160 sqrtPriceX96After,
-            uint32 initializedTicksCrossed,
-            uint256 gasEstimate
-        ) {
-            require(quotedAmount > 0, "Quote returned zero amount");
-
-            // Cache the quote
-            bytes32 quoteKey = keccak256(
-                abi.encodePacked(_tokenIn, _tokenOut, _amountIn, fee)
-            );
-            poolQuotes[quoteKey] = PoolQuote({
-                timestamp: block.timestamp,
-                quotedAmount: quotedAmount,
-                fee: fee
-            });
-
-            uint256 minAmountOut = (quotedAmount * (10000 - MAX_SLIPPAGE)) /
-                10000;
-
-            // Transfer tokens using Permit2
             permit2.transferFrom(
-                msg.sender,
-                address(this),
-                uint160(_amountIn),
-                _tokenIn
-            );
-
+                msg.sender, // from
+                address(this), // to
+                uint160(_amountIn), // amount
+                _tokenIn // token
+            )
+        {
             // Approve router through Permit2
             permit2.approve(
                 _tokenIn,
@@ -212,20 +195,16 @@ contract GoDegen {
                 uint48(block.timestamp + DEADLINE_EXTENSION)
             );
 
-            // Execute swap with the cached quote
-            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
-                .ExactInputSingleParams({
-                    tokenIn: _tokenIn,
-                    tokenOut: _tokenOut,
-                    fee: fee,
-                    recipient: _recipient,
-                    deadline: block.timestamp + DEADLINE_EXTENSION,
-                    amountIn: _amountIn,
-                    amountOutMinimum: minAmountOut,
-                    sqrtPriceLimitX96: 0
-                });
+            // Execute the swap
+            amountOut = executeSwap(
+                _tokenIn,
+                _tokenOut,
+                _amountIn,
+                minAmountOut,
+                _recipient,
+                fee
+            );
 
-            amountOut = swapRouter.exactInputSingle(params);
             require(amountOut >= minAmountOut, "Insufficient output amount");
 
             // Clear the quote cache
@@ -242,10 +221,20 @@ contract GoDegen {
 
             return amountOut;
         } catch Error(string memory reason) {
-            revert(string(abi.encodePacked("Quote failed: ", reason)));
-        } catch (bytes memory /*lowLevelData*/) {
-            revert("Failed to get quote - try increasing amount");
+            revert(string(abi.encodePacked("Transfer failed: ", reason)));
+        } catch {
+            revert("Transfer failed - check balance and allowance");
         }
+    }
+
+    function executeTrade(
+        address _tokenIn,
+        address _tokenOut,
+        uint256 _amountIn,
+        address _recipient,
+        bytes calldata /*_aiData*/
+    ) external onlyAIOracle returns (uint256) {
+        return executeManualTrade(_tokenIn, _tokenOut, _amountIn, _recipient);
     }
 }
 
