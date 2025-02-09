@@ -16,10 +16,18 @@ contract GoDegen {
 
     uint24[] public SUPPORTED_FEES = [100, 500, 3000, 10000];
     uint256 public constant DEADLINE_EXTENSION = 20 minutes;
-    uint256 public constant MAX_SLIPPAGE = 200; // 50%
-    uint256 public constant MIN_TRADE_AMOUNT = 1e5; // 0.1 USDC (increased from 0.01)
+    uint256 public constant MAX_SLIPPAGE = 5000;
+    uint256 public constant MIN_TRADE_AMOUNT = 1e5; // 0.1 USDC
 
     mapping(address => bool) public whitelistedTokens;
+
+    // Add pool quote cache to prevent slippage between quote and execution
+    struct PoolQuote {
+        uint256 timestamp;
+        uint256 quotedAmount;
+        uint24 fee;
+    }
+    mapping(bytes32 => PoolQuote) private poolQuotes;
 
     event TradeExecuted(
         address tokenIn,
@@ -86,7 +94,7 @@ contract GoDegen {
         address _tokenOut,
         uint256 _amountIn,
         address _recipient,
-        bytes calldata _aiData
+        bytes calldata /*_aiData*/
     ) external onlyAIOracle returns (uint256 amountOut) {
         require(
             whitelistedTokens[_tokenIn] && whitelistedTokens[_tokenOut],
@@ -95,7 +103,7 @@ contract GoDegen {
         require(_amountIn >= MIN_TRADE_AMOUNT, "Amount too low");
 
         // Find best pool and fee
-        (address pool, uint24 fee) = findBestPool(_tokenIn, _tokenOut);
+        (, uint24 fee) = findBestPool(_tokenIn, _tokenOut);
 
         // Get quote for minimum amount out
         (uint256 quotedAmount, , , ) = quoter.quoteExactInputSingle(
@@ -154,13 +162,35 @@ contract GoDegen {
         require(_amountIn >= MIN_TRADE_AMOUNT, "Amount too low (min 0.1 USDC)");
 
         // Find best pool and fee
-        (address pool, uint24 fee) = findBestPool(_tokenIn, _tokenOut);
+        (, uint24 fee) = findBestPool(_tokenIn, _tokenOut);
 
         // Get quote for minimum amount out
         try
-            quoter.quoteExactInputSingle(_tokenIn, _tokenOut, fee, _amountIn, 0)
-        returns (uint256 quotedAmount, uint160, uint32, uint256) {
+            quoter.quoteExactInputSingle(
+                _tokenIn,
+                _tokenOut,
+                fee,
+                _amountIn,
+                0 // sqrtPriceLimitX96
+            )
+        returns (
+            uint256 quotedAmount,
+            uint160 sqrtPriceX96After,
+            uint32 initializedTicksCrossed,
+            uint256 gasEstimate
+        ) {
             require(quotedAmount > 0, "Quote returned zero amount");
+
+            // Cache the quote
+            bytes32 quoteKey = keccak256(
+                abi.encodePacked(_tokenIn, _tokenOut, _amountIn, fee)
+            );
+            poolQuotes[quoteKey] = PoolQuote({
+                timestamp: block.timestamp,
+                quotedAmount: quotedAmount,
+                fee: fee
+            });
+
             uint256 minAmountOut = (quotedAmount * (10000 - MAX_SLIPPAGE)) /
                 10000;
 
@@ -180,7 +210,7 @@ contract GoDegen {
                 "Approve failed"
             );
 
-            // Execute swap
+            // Execute swap with the cached quote
             ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
                 .ExactInputSingleParams({
                     tokenIn: _tokenIn,
@@ -195,6 +225,9 @@ contract GoDegen {
 
             amountOut = swapRouter.exactInputSingle(params);
             require(amountOut >= minAmountOut, "Insufficient output amount");
+
+            // Clear the quote cache
+            delete poolQuotes[quoteKey];
 
             emit TradeExecuted(
                 _tokenIn,

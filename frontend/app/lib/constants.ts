@@ -21,19 +21,22 @@ export const PAIR_ABI = [
 
 export const TOKENS = {
   USDC: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-  AERO: "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
-  DICKBUTT: "0x2D57C47BC5D2432FEEEdf2c9150162A9862D3cCf",
+  AERO: "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
+  GAME: "0x1C4CcA7C5DB003824208aDDA61Bd749e55F463a3",
+  CBBTC: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
   WETH: "0x4200000000000000000000000000000000000006",
 } as const;
 
 export const POOLS = {
-  DICKBUTT_USDC: "0xf71323c2c3dc3895aba839ad9f79168e904d42ff",
-  DICKBUTT_WETH: "0x92d90f7f8413749bd4bea26dde4e29efc9e9a0b6",
-  DICKBUTT_USDC_AERO: "0x696eab64ff2d7b867cde8ab237e29a5f312302fc", // Aerodrome pool
+  AERO_USDC: "0x6cdcb1c4a4d1c3c6d054b27ac5b77e89eafb971d", // Aerodrome pool
+  GAME_VIRTUAL: "0xd418dfe7670c21f682e041f34250c114db5d7789", // Uniswap V2
+  CBBTC_USDC: "0xfbb6eed8e7aa03b138556eedaf5d271a5e1e43ef", // Uniswap V3
 } as const;
 
 export const POOL_FEES = {
-  DICKBUTT_USDC: 10000, // 1%
+  AERO_USDC: 10000, // 1% for Aerodrome
+  GAME_VIRTUAL: 3000, // 0.3% for Uniswap V2
+  CBBTC_USDC: 500, // 0.05% for Uniswap V3
 } as const;
 
 export const PAIRS_TO_MONITOR: PairInfo[] = [
@@ -90,9 +93,9 @@ export const CHAIN_CONFIG = {
 // ] as const;
 
 export const CONTRACT_ADDRESSES = {
-  portfolioManager: "0x80acdc6D6c4C4b11635Fb0C1fB7E4f74D137c3aF",
-  aiTrader: "0xFc2265e8a38853C4Fb16897EB6b2122d613ba90a",
-  aiOracle: "0xD9046CAe0236dd388ae4Bb1A707caDE93adAa3DD",
+  portfolioManager: "0xA3514aC75cBD859A53B4F03bF31e4A8c1FF389d8",
+  aiTrader: "0x024C549ff99B4AB310831c6b5a26303E2D5755c4",
+  aiOracle: "0xd737efA5818c025FfdA4068871ecce7921B7a6aB",
 } as const;
 
 export const ERC20_ABI = [
