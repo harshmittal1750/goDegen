@@ -7,6 +7,7 @@ import {
   JetBrains_Mono,
   Stalinist_One,
 } from "next/font/google";
+import { Providers } from "./providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -57,7 +58,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${orbitron.variable} ${jetbrainsMono.variable} ${stalinistOne.variable} antialiased`}
       >
-        {children}
+        <Providers> {children}</Providers>
       </body>
     </html>
   );

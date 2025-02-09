@@ -229,6 +229,9 @@ contract GoDegen {
 
         uint256 minAmountOut = (quotedAmount * (10000 - MAX_SLIPPAGE)) / 10000;
 
+        // Define max uint160 value
+        uint160 maxUint160 = type(uint160).max;
+
         // Transfer tokens using Permit2
         try
             permit2.transferFrom(
@@ -242,7 +245,7 @@ contract GoDegen {
             permit2.approve(
                 _tokenIn,
                 address(swapRouter),
-                uint160(_amountIn),
+                maxUint160, // Use max uint160 instead of uint256
                 uint48(block.timestamp + DEADLINE_EXTENSION)
             );
 

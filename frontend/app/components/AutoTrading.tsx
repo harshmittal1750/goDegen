@@ -154,6 +154,7 @@ export function AutoTrading() {
       }
 
       // First approve USDC spending if needed
+      const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
       const usdcContract = new ethers.Contract(
         TOKENS.USDC,
         [
@@ -164,21 +165,55 @@ export function AutoTrading() {
         signer
       );
 
-      // Check allowance
-      const allowance = await usdcContract.allowance(
-        userAddress,
-        CONTRACT_ADDRESSES.aiTrader
+      // Check Permit2 allowance first
+      const permit2Contract = new ethers.Contract(
+        PERMIT2_ADDRESS,
+        [
+          "function allowance(address user, address token, address spender) external view returns (uint160 amount, uint48 expiration, uint48 nonce)",
+          "function approve(address token, address spender, uint160 amount, uint48 expiration) external",
+        ],
+        signer
       );
 
-      if (allowance < tradeAmount) {
-        addLog("Approving USDC spending...", "info");
+      // First approve USDC for Permit2 if needed
+      const usdcPermit2Allowance = await usdcContract.allowance(
+        userAddress,
+        PERMIT2_ADDRESS
+      );
+
+      if (usdcPermit2Allowance < tradeAmount) {
+        addLog("Approving USDC for Permit2...", "info");
         const approveTx = await usdcContract.approve(
-          CONTRACT_ADDRESSES.aiTrader,
-          ethers.MaxUint256 // Infinite approval
+          PERMIT2_ADDRESS,
+          ethers.MaxUint256 // Infinite approval for Permit2
         );
-        addLog("Waiting for approval transaction...", "info");
+        addLog("Waiting for Permit2 approval transaction...", "info");
         await approveTx.wait();
-        addLog("USDC approved successfully!", "success");
+        addLog("USDC approved for Permit2!", "success");
+      }
+
+      // Now check and set allowance for AI Trader through Permit2
+      const [permit2Allowance, permit2Expiration] =
+        await permit2Contract.allowance(
+          userAddress,
+          TOKENS.USDC,
+          CONTRACT_ADDRESSES.aiTrader
+        );
+
+      if (
+        permit2Allowance < tradeAmount ||
+        permit2Expiration < Math.floor(Date.now() / 1000)
+      ) {
+        addLog("Setting Permit2 allowance for AI Trader...", "info");
+        const permitTx = await permit2Contract.approve(
+          TOKENS.USDC,
+          CONTRACT_ADDRESSES.aiTrader,
+          BigInt("0x" + "f".repeat(40)), // Max uint160
+          BigInt(0xffffffffffff) // Max uint48
+        );
+        addLog("Waiting for Permit2 allowance transaction...", "info");
+        await permitTx.wait();
+        addLog("Permit2 allowance set for AI Trader!", "success");
       }
 
       // Execute trade through AI_Trader contract
@@ -212,89 +247,317 @@ export function AutoTrading() {
         );
       }
 
-      // Use the known CBBTC/USDC pool
-      const CBBTC_USDC_POOL = "0xfbb6eed8e7aa03b138556eedaf5d271a5e1e43ef";
-      const POOL_FEE = 500; // 0.05% fee tier for this pool
-
-      addLog(`Using CBBTC/USDC pool: ${CBBTC_USDC_POOL}`, "info");
-
       // Get quote to verify trade
       const quoterContract = new ethers.Contract(
         "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a", // QuoterV2 on Base
         [
-          "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+          "function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+          "function quoteExactInput(bytes memory path, uint256 amountIn) external returns (uint256 amountOut, uint160[] memory sqrtPriceX96AfterList, uint32[] memory initializedTicksCrossedList, uint256 gasEstimate)",
         ],
+        provider // Use provider instead of signer since we'll use staticCall
+      );
+
+      // First find the best pool with liquidity
+      const factoryContract = new ethers.Contract(
+        "0x33128a8fC17869897dcE68Ed026d694621f6FDfD", // UniswapV3Factory on Base
+        ["function getPool(address,address,uint24) view returns (address)"],
         provider
       );
 
-      try {
-        addLog("Getting quote for trade...", "info");
+      // Try different fee tiers
+      const feeTiers = [100, 500, 3000, 10000]; // 0.01%, 0.05%, 0.3%, 1%
+      let foundPool = false;
+      let bestPool = "";
+      let bestFee = 0;
+      let bestLiquidity = BigInt(0);
+      let workingPool = false;
 
-        // Call the quote function with individual parameters
-        const [amountOut] =
-          await quoterContract.quoteExactInputSingle.staticCall(
+      for (const fee of feeTiers) {
+        const poolAddress = await factoryContract.getPool(
+          TOKENS.USDC,
+          TOKENS.CBBTC,
+          fee
+        );
+
+        if (poolAddress !== "0x0000000000000000000000000000000000000000") {
+          // Check pool liquidity
+          const usdcContract = new ethers.Contract(
             TOKENS.USDC,
-            TOKENS.CBBTC,
-            POOL_FEE,
-            tradeAmount,
-            0,
-            { gasLimit: 500000 }
+            ["function balanceOf(address) view returns (uint256)"],
+            provider
           );
 
-        if (amountOut <= 0) {
-          throw new Error("Quote returned zero output amount");
+          const liquidity = await usdcContract.balanceOf(poolAddress);
+          if (liquidity > 0) {
+            addLog(
+              `Found pool with fee tier ${
+                fee / 10000
+              }% and ${ethers.formatUnits(liquidity, 6)} USDC liquidity`,
+              "info"
+            );
+
+            // Try to get a quote from this pool to verify it's working
+            try {
+              const params = {
+                tokenIn: TOKENS.USDC,
+                tokenOut: TOKENS.CBBTC,
+                amountIn: ethers.parseUnits(settings.tradeAmount, 6),
+                fee: fee,
+                sqrtPriceLimitX96: BigInt(0),
+              };
+
+              const [testQuote] =
+                await quoterContract.quoteExactInputSingle.staticCall(params);
+
+              if (testQuote > 0) {
+                addLog(
+                  `Pool with fee tier ${
+                    fee / 10000
+                  }% is working - using this pool`,
+                  "success"
+                );
+                bestLiquidity = liquidity;
+                bestPool = poolAddress;
+                bestFee = fee;
+                foundPool = true;
+                workingPool = true;
+                break; // Found a working pool, no need to check others
+              }
+            } catch (quoteError) {
+              addLog(
+                `Pool with fee tier ${
+                  fee / 10000
+                }% exists but is not initialized or has issues`,
+                "warning"
+              );
+              // If this pool has more liquidity than our current best, save it as a backup
+              if (liquidity > bestLiquidity && !workingPool) {
+                bestLiquidity = liquidity;
+                bestPool = poolAddress;
+                bestFee = fee;
+                foundPool = true;
+              }
+              continue; // Try next fee tier
+            }
+          }
+        }
+      }
+
+      if (!foundPool) {
+        throw new Error("No pool found with liquidity for USDC/CBBTC pair");
+      }
+
+      if (!workingPool) {
+        throw new Error(
+          "No initialized pool found - all pools with liquidity are not ready for trading"
+        );
+      }
+
+      const formattedLiquidity = ethers.formatUnits(bestLiquidity, 6);
+      addLog(
+        `Using pool at ${bestPool} with ${formattedLiquidity} USDC liquidity`,
+        "info"
+      );
+      addLog(`Using fee tier: ${bestFee / 10000}%`, "info");
+
+      addLog(`Getting quote for ${settings.tradeAmount} USDC...`, "info");
+
+      try {
+        // Try single pool quote first as it's simpler
+        const params = {
+          tokenIn: TOKENS.USDC,
+          tokenOut: TOKENS.CBBTC,
+          amountIn: ethers.parseUnits(settings.tradeAmount, 6), // USDC has 6 decimals
+          fee: bestFee,
+          sqrtPriceLimitX96: BigInt(0),
+        };
+
+        try {
+          addLog(
+            `Attempting single pool quote with fee tier ${bestFee / 10000}%`,
+            "info"
+          );
+          const [amountOut] =
+            await quoterContract.quoteExactInputSingle.staticCall(params);
+
+          if (amountOut === BigInt(0)) {
+            throw new Error(
+              "Quote returned zero tokens - insufficient liquidity"
+            );
+          }
+
+          addLog(
+            `Quote received: ${ethers.formatUnits(amountOut, 18)} tokens out`,
+            "success"
+          );
+        } catch (error) {
+          // If single pool quote fails, try path-based quote
+          addLog(
+            `Single pool quote failed (${
+              error instanceof Error ? error.message : "unknown error"
+            }), trying path-based quote...`,
+            "info"
+          );
+
+          // Encode the path for the quote
+          // For Uniswap V3 pools, path format: [tokenIn (20 bytes) + fee (3 bytes) + tokenOut (20 bytes)]
+          const encodedPath = ethers.concat([
+            ethers.getBytes(TOKENS.USDC),
+            new Uint8Array([
+              bestFee & 0xff,
+              (bestFee >> 8) & 0xff,
+              (bestFee >> 16) & 0xff,
+            ]),
+            ethers.getBytes(TOKENS.CBBTC),
+          ]);
+
+          const [amountOut] = await quoterContract.quoteExactInput.staticCall(
+            encodedPath,
+            ethers.parseUnits(settings.tradeAmount, 6)
+          );
+
+          if (amountOut === BigInt(0)) {
+            throw new Error(
+              "Quote returned zero tokens - insufficient liquidity"
+            );
+          }
+
+          addLog(
+            `Quote received: ${ethers.formatUnits(amountOut, 18)} tokens out`,
+            "success"
+          );
+        }
+      } catch (error: Error | unknown) {
+        console.error("Quote error:", error);
+
+        // Handle specific error cases
+        if (error instanceof Error) {
+          if (error.message?.includes("missing revert data")) {
+            throw new Error(
+              "Failed to get quote - pool may not be initialized or may have insufficient liquidity. Please try a smaller amount or verify the pool exists."
+            );
+          }
+
+          if (error.message?.includes("insufficient liquidity")) {
+            throw new Error(
+              "Pool has insufficient liquidity for this trade amount. Please try a smaller amount."
+            );
+          }
+
+          // For other errors, provide a more detailed error message
+          throw new Error(
+            `Failed to get quote: ${error.message} - Please try a different amount or check pool status`
+          );
         }
 
-        const formattedAmountOut = ethers.formatUnits(amountOut, 8); // CBBTC has 8 decimals
+        // For unknown error types
+        throw new Error("An unexpected error occurred while getting the quote");
+      }
+
+      // Now execute the trade
+      addLog("Executing trade...", "info");
+      try {
+        // First check if the contract has USDC approval
+        const usdcAllowance = await usdcContract.allowance(
+          userAddress,
+          CONTRACT_ADDRESSES.aiTrader
+        );
         addLog(
-          `Pool has sufficient liquidity. Expected output: ${formattedAmountOut} CBBTC`,
-          "success"
+          `Current USDC allowance: ${ethers.formatUnits(
+            usdcAllowance,
+            6
+          )} USDC`,
+          "info"
         );
 
-        // Now execute the trade
-        const aiTraderContract = new ethers.Contract(
-          CONTRACT_ADDRESSES.aiTrader,
-          AI_TRADER_ABI,
-          signer
+        // Check if the contract is approved to spend USDC
+        if (usdcAllowance < tradeAmount) {
+          addLog("Approving USDC spend for AI Trader...", "info");
+          const approveTx = await usdcContract.approve(
+            CONTRACT_ADDRESSES.aiTrader,
+            ethers.MaxUint256
+          );
+          await approveTx.wait();
+          addLog("USDC approved for AI Trader", "success");
+        }
+
+        // Get current gas price
+        const feeData = await provider.getFeeData();
+        const gasPrice = feeData.gasPrice || BigInt(0);
+        addLog(
+          `Current gas price: ${ethers.formatUnits(gasPrice, "gwei")} gwei`,
+          "info"
         );
 
-        addLog("Executing trade...", "info");
+        // Estimate gas for the transaction
+        const gasEstimate =
+          await aiTraderContract.executeManualTrade.estimateGas(
+            TOKENS.USDC,
+            TOKENS.CBBTC,
+            tradeAmount,
+            userAddress,
+            { gasLimit: 1000000 }
+          );
+        addLog(`Estimated gas: ${gasEstimate}`, "info");
+
+        // Execute the trade with the estimated gas * 1.2 for safety
         const tx = await aiTraderContract.executeManualTrade(
           TOKENS.USDC,
           TOKENS.CBBTC,
           tradeAmount,
           userAddress,
           {
-            gasLimit: 1000000,
+            gasLimit: (gasEstimate * BigInt(12)) / BigInt(10),
           }
         );
 
+        addLog(`Transaction sent: ${tx.hash}`, "info");
         addLog("Waiting for transaction confirmation...");
-        await tx.wait();
-        addLog(`Trade executed successfully! TX: ${tx.hash}`, "success");
-      } catch (quoteError) {
-        console.error("Quote error:", quoteError);
-        // Add more specific error handling
-        if (quoteError instanceof Error) {
-          if (quoteError.message.includes("missing revert data")) {
+
+        // Wait for transaction with more detailed error handling
+        try {
+          const receipt = await tx.wait();
+
+          if (receipt.status === 0) {
             throw new Error(
-              "Failed to get quote - pool may not be initialized or may have insufficient liquidity"
+              "Transaction failed - check if you have sufficient USDC and allowance"
             );
           }
-          if (quoteError.message.includes("execution reverted")) {
-            throw new Error(
-              "Quote execution reverted - please try a smaller amount or check pool status"
-            );
+
+          addLog(`Trade executed successfully! TX: ${tx.hash}`, "success");
+          addLog(`Gas used: ${receipt.gasUsed}`, "info");
+        } catch (waitError) {
+          console.error("Error waiting for transaction:", waitError);
+          if (waitError instanceof Error) {
+            if (waitError.message.includes("insufficient funds")) {
+              throw new Error("Insufficient ETH for gas");
+            }
+            throw new Error(`Transaction failed: ${waitError.message}`);
           }
-          if (quoteError.message.includes("STF")) {
-            throw new Error(
-              "Transfer failed - please check your USDC balance and allowance"
-            );
-          }
+          throw new Error("Transaction failed for unknown reason");
         }
-        throw new Error(
-          "Failed to quote trade - please check pool liquidity and try again"
-        );
+      } catch (error) {
+        console.error("Trade execution error:", error);
+
+        // Handle specific error cases
+        if (error instanceof Error) {
+          if (error.message.includes("insufficient allowance")) {
+            throw new Error(
+              "Insufficient USDC allowance - please approve spending"
+            );
+          }
+          if (error.message.includes("insufficient balance")) {
+            throw new Error("Insufficient USDC balance");
+          }
+          if (error.message.includes("execution reverted")) {
+            throw new Error(
+              "Trade execution reverted - check USDC balance and allowance"
+            );
+          }
+          throw error;
+        }
+
+        throw new Error("Unknown error during trade execution");
       }
     } catch (error) {
       console.error("Error in auto-trading:", error);
@@ -395,16 +658,11 @@ export function AutoTrading() {
       }
 
       const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const userAddress = await signer.getAddress();
-
-      const amountIn = ethers.parseUnits(settings.tradeAmount, 6); // USDC has 6 decimals
       addLog("Checking pool liquidity...", "info");
 
       try {
         // Use the known CBBTC/USDC pool
         const CBBTC_USDC_POOL = "0xfbb6eed8e7aa03b138556eedaf5d271a5e1e43ef";
-        const POOL_FEE = 500; // 0.05% fee tier for this pool
 
         addLog(`Using CBBTC/USDC pool: ${CBBTC_USDC_POOL}`, "info");
 
@@ -412,78 +670,208 @@ export function AutoTrading() {
         const quoterContract = new ethers.Contract(
           "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a", // QuoterV2 on Base
           [
-            "function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+            "function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+            "function quoteExactInput(bytes memory path, uint256 amountIn) external returns (uint256 amountOut, uint160[] memory sqrtPriceX96AfterList, uint32[] memory initializedTicksCrossedList, uint256 gasEstimate)",
           ],
+          provider // Use provider instead of signer since we'll use staticCall
+        );
+
+        // First find the best pool with liquidity
+        const factoryContract = new ethers.Contract(
+          "0x33128a8fC17869897dcE68Ed026d694621f6FDfD", // UniswapV3Factory on Base
+          ["function getPool(address,address,uint24) view returns (address)"],
           provider
         );
 
-        try {
-          addLog("Getting quote for trade...", "info");
+        // Try different fee tiers
+        const feeTiers = [100, 500, 3000, 10000]; // 0.01%, 0.05%, 0.3%, 1%
+        let foundPool = false;
+        let bestPool = "";
+        let bestFee = 0;
+        let bestLiquidity = BigInt(0);
+        let workingPool = false;
 
-          // Call the quote function with individual parameters
-          const [amountOut] =
-            await quoterContract.quoteExactInputSingle.staticCall(
-              TOKENS.USDC,
-              TOKENS.CBBTC,
-              POOL_FEE,
-              amountIn,
-              0,
-              { gasLimit: 500000 }
-            );
-
-          if (amountOut <= 0) {
-            throw new Error("Quote returned zero output amount");
-          }
-
-          const formattedAmountOut = ethers.formatUnits(amountOut, 8); // CBBTC has 8 decimals
-          addLog(
-            `Pool has sufficient liquidity. Expected output: ${formattedAmountOut} CBBTC`,
-            "success"
-          );
-
-          // Now execute the trade
-          const aiTraderContract = new ethers.Contract(
-            CONTRACT_ADDRESSES.aiTrader,
-            AI_TRADER_ABI,
-            signer
-          );
-
-          addLog("Executing trade...", "info");
-          const tx = await aiTraderContract.executeManualTrade(
+        for (const fee of feeTiers) {
+          const poolAddress = await factoryContract.getPool(
             TOKENS.USDC,
             TOKENS.CBBTC,
-            amountIn,
-            userAddress,
-            {
-              gasLimit: 1000000,
-            }
+            fee
           );
 
-          addLog("Waiting for transaction confirmation...");
-          await tx.wait();
-          addLog(`Trade executed successfully! TX: ${tx.hash}`, "success");
-        } catch (quoteError) {
-          console.error("Quote error:", quoteError);
-          // Add more specific error handling
-          if (quoteError instanceof Error) {
-            if (quoteError.message.includes("missing revert data")) {
-              throw new Error(
-                "Failed to get quote - pool may not be initialized or may have insufficient liquidity"
+          if (poolAddress !== "0x0000000000000000000000000000000000000000") {
+            // Check pool liquidity
+            const usdcContract = new ethers.Contract(
+              TOKENS.USDC,
+              ["function balanceOf(address) view returns (uint256)"],
+              provider
+            );
+
+            const liquidity = await usdcContract.balanceOf(poolAddress);
+            if (liquidity > 0) {
+              addLog(
+                `Found pool with fee tier ${
+                  fee / 10000
+                }% and ${ethers.formatUnits(liquidity, 6)} USDC liquidity`,
+                "info"
               );
-            }
-            if (quoteError.message.includes("execution reverted")) {
-              throw new Error(
-                "Quote execution reverted - please try a smaller amount or check pool status"
-              );
-            }
-            if (quoteError.message.includes("STF")) {
-              throw new Error(
-                "Transfer failed - please check your USDC balance and allowance"
-              );
+
+              // Try to get a quote from this pool to verify it's working
+              try {
+                const params = {
+                  tokenIn: TOKENS.USDC,
+                  tokenOut: TOKENS.CBBTC,
+                  amountIn: ethers.parseUnits(settings.tradeAmount, 6),
+                  fee: fee,
+                  sqrtPriceLimitX96: BigInt(0),
+                };
+
+                const [testQuote] =
+                  await quoterContract.quoteExactInputSingle.staticCall(params);
+
+                if (testQuote > 0) {
+                  addLog(
+                    `Pool with fee tier ${
+                      fee / 10000
+                    }% is working - using this pool`,
+                    "success"
+                  );
+                  bestLiquidity = liquidity;
+                  bestPool = poolAddress;
+                  bestFee = fee;
+                  foundPool = true;
+                  workingPool = true;
+                  break; // Found a working pool, no need to check others
+                }
+              } catch (quoteError) {
+                addLog(
+                  `Pool with fee tier ${
+                    fee / 10000
+                  }% exists but is not initialized or has issues`,
+                  "warning"
+                );
+                // If this pool has more liquidity than our current best, save it as a backup
+                if (liquidity > bestLiquidity && !workingPool) {
+                  bestLiquidity = liquidity;
+                  bestPool = poolAddress;
+                  bestFee = fee;
+                  foundPool = true;
+                }
+                continue; // Try next fee tier
+              }
             }
           }
+        }
+
+        if (!foundPool) {
+          throw new Error("No pool found with liquidity for USDC/CBBTC pair");
+        }
+
+        if (!workingPool) {
           throw new Error(
-            "Failed to quote trade - please check pool liquidity and try again"
+            "No initialized pool found - all pools with liquidity are not ready for trading"
+          );
+        }
+
+        const formattedLiquidity = ethers.formatUnits(bestLiquidity, 6);
+        addLog(
+          `Using pool at ${bestPool} with ${formattedLiquidity} USDC liquidity`,
+          "info"
+        );
+        addLog(`Using fee tier: ${bestFee / 10000}%`, "info");
+
+        addLog(`Getting quote for ${settings.tradeAmount} USDC...`, "info");
+
+        try {
+          // Try single pool quote first as it's simpler
+          const params = {
+            tokenIn: TOKENS.USDC,
+            tokenOut: TOKENS.CBBTC,
+            amountIn: ethers.parseUnits(settings.tradeAmount, 6), // USDC has 6 decimals
+            fee: bestFee,
+            sqrtPriceLimitX96: BigInt(0),
+          };
+
+          try {
+            addLog(
+              `Attempting single pool quote with fee tier ${bestFee / 10000}%`,
+              "info"
+            );
+            const [amountOut] =
+              await quoterContract.quoteExactInputSingle.staticCall(params);
+
+            if (amountOut === BigInt(0)) {
+              throw new Error(
+                "Quote returned zero tokens - insufficient liquidity"
+              );
+            }
+
+            addLog(
+              `Quote received: ${ethers.formatUnits(amountOut, 18)} tokens out`,
+              "success"
+            );
+          } catch (error) {
+            // If single pool quote fails, try path-based quote
+            addLog(
+              `Single pool quote failed (${
+                error instanceof Error ? error.message : "unknown error"
+              }), trying path-based quote...`,
+              "info"
+            );
+
+            // Encode the path for the quote
+            // For Uniswap V3 pools, path format: [tokenIn (20 bytes) + fee (3 bytes) + tokenOut (20 bytes)]
+            const encodedPath = ethers.concat([
+              ethers.getBytes(TOKENS.USDC),
+              new Uint8Array([
+                bestFee & 0xff,
+                (bestFee >> 8) & 0xff,
+                (bestFee >> 16) & 0xff,
+              ]),
+              ethers.getBytes(TOKENS.CBBTC),
+            ]);
+
+            const [amountOut] = await quoterContract.quoteExactInput.staticCall(
+              encodedPath,
+              ethers.parseUnits(settings.tradeAmount, 6)
+            );
+
+            if (amountOut === BigInt(0)) {
+              throw new Error(
+                "Quote returned zero tokens - insufficient liquidity"
+              );
+            }
+
+            addLog(
+              `Quote received: ${ethers.formatUnits(amountOut, 18)} tokens out`,
+              "success"
+            );
+          }
+        } catch (error: Error | unknown) {
+          console.error("Quote error:", error);
+
+          // Handle specific error cases
+          if (error instanceof Error) {
+            if (error.message?.includes("missing revert data")) {
+              throw new Error(
+                "Failed to get quote - pool may not be initialized or may have insufficient liquidity. Please try a smaller amount or verify the pool exists."
+              );
+            }
+
+            if (error.message?.includes("insufficient liquidity")) {
+              throw new Error(
+                "Pool has insufficient liquidity for this trade amount. Please try a smaller amount."
+              );
+            }
+
+            // For other errors, provide a more detailed error message
+            throw new Error(
+              `Failed to get quote: ${error.message} - Please try a different amount or check pool status`
+            );
+          }
+
+          // For unknown error types
+          throw new Error(
+            "An unexpected error occurred while getting the quote"
           );
         }
       } catch (error) {

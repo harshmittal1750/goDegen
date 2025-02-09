@@ -205,7 +205,7 @@ export const AI_TRADER_ABI = [
     outputs: [
       {
         internalType: "uint256",
-        name: "amountOut",
+        name: "",
         type: "uint256",
       },
     ],
@@ -260,6 +260,19 @@ export const AI_TRADER_ABI = [
     outputs: [
       {
         internalType: "address",
+        name: "",
+        type: "address",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "permit2",
+    outputs: [
+      {
+        internalType: "contract IPermit2",
         name: "",
         type: "address",
       },

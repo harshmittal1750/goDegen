@@ -93,9 +93,9 @@ export const CHAIN_CONFIG = {
 // ] as const;
 
 export const CONTRACT_ADDRESSES = {
-  portfolioManager: "0xae7E3D57804dD2B03e3172397Ef5c82F55D9FBd1",
-  aiTrader: "0xA8ce7BEC3eCfc64Ebaf771D72aB3d4657bAbcE3A",
-  aiOracle: "0x5b0b6f7B2eD999DD301DC06aC8e900a16ae53c8c",
+  portfolioManager: "0x5311762b56488E6A5bE780910bAb20353A93FBdb",
+  aiTrader: "0x3d66bc567613a5E7D3b49bb3b8C7BFf53EEB82f6",
+  aiOracle: "0x8e5aF933650BE4af3A58d949e5B817194aC5d91f",
 } as const;
 
 export const ERC20_ABI = [

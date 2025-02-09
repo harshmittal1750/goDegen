@@ -10,6 +10,12 @@
     "tsc": "tsc"
   },
   "dependencies": {
+    "@coinbase/agentkit": "^0.1.2",
+    "@coinbase/agentkit-langchain": "^0.1.0",
+    "@coinbase/onchainkit": "^0.36.10",
+    "@langchain/core": "^0.3.39",
+    "@langchain/langgraph": "^0.2.45",
+    "@langchain/openai": "^0.4.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "ethers": "^6.13.5",
@@ -23,6 +29,7 @@
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "viem": "^2.22.23",
     "zustand": "^5.0.3"
   },
   "devDependencies": {

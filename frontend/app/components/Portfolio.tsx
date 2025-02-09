@@ -11,6 +11,7 @@ import {
 import { NetworkManager } from "./NetworkManager";
 import { TradingInterface } from "./TradingInterface";
 import { AutoTrading } from "./AutoTrading";
+// import { TokenManager } from "./TokenManager";
 
 interface PortfolioData {
   totalValue: number;
@@ -31,7 +32,9 @@ export function Portfolio() {
   const [loading, setLoading] = useState(true);
   const [riskLevel, setRiskLevel] = useState(5);
   const [depositAmount, setDepositAmount] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
   const [isDepositing, setIsDepositing] = useState(false);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
 
@@ -322,6 +325,71 @@ export function Portfolio() {
     }
   };
 
+  const handleWithdraw = async () => {
+    try {
+      setIsWithdrawing(true);
+      setErrorMessage(null);
+
+      if (!window.ethereum) {
+        throw new Error("Please install MetaMask!");
+      }
+
+      if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
+        throw new Error("Please enter a valid withdrawal amount");
+      }
+
+      const provider = new ethers.BrowserProvider(
+        window.ethereum as Eip1193Provider
+      );
+      const signer = await provider.getSigner();
+
+      const portfolioContract = new ethers.Contract(
+        CONTRACT_ADDRESSES.portfolioManager,
+        PORTFOLIO_MANAGER_ABI,
+        signer
+      );
+
+      // Check if user has sufficient balance
+      const userAddress = await signer.getAddress();
+      const balance = await portfolioContract.getTokenBalance(
+        userAddress,
+        TOKENS.USDC
+      );
+      const withdrawAmountWei = ethers.parseUnits(withdrawAmount, 6); // USDC has 6 decimals
+
+      if (balance < withdrawAmountWei) {
+        throw new Error(
+          `Insufficient balance. You have ${ethers.formatUnits(
+            balance,
+            6
+          )} USDC`
+        );
+      }
+
+      // Execute withdrawal
+      console.log("Withdrawing tokens...");
+      const tx = await portfolioContract.withdraw(
+        TOKENS.USDC,
+        withdrawAmountWei
+      );
+      await tx.wait();
+      console.log("Withdrawal successful");
+
+      // Reset form and reload portfolio data
+      setWithdrawAmount("");
+      window.location.reload();
+    } catch (error: Error | unknown) {
+      console.error("Error withdrawing:", error);
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Error withdrawing tokens. Please try again."
+      );
+    } finally {
+      setIsWithdrawing(false);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between">
@@ -389,6 +457,11 @@ export function Portfolio() {
             </div>
           </div>
 
+          {/* <div className="terminal-card">
+            <h3 className="terminal-header">Token Manager</h3>
+            <TokenManager />
+          </div> */}
+
           <div className="terminal-card">
             <h3 className="terminal-header">AI Predictions</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -438,7 +511,7 @@ export function Portfolio() {
           </div>
 
           <div className="terminal-card">
-            <h3 className="terminal-header">Deposit Funds</h3>
+            <h3 className="terminal-header">Deposit/Withdraw Funds</h3>
             {errorMessage && (
               <div className="mb-4 p-3 bg-red-900/20 text-red-400 rounded border border-red-800">
                 {errorMessage}
@@ -487,6 +560,45 @@ export function Portfolio() {
                 )}
               </button>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Amount</label>
+              <input
+                type="number"
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+                placeholder="Enter amount"
+                disabled={isWithdrawing}
+              />
+            </div>
+            <button
+              onClick={handleWithdraw}
+              className="btn-primary w-full"
+              disabled={isWithdrawing || !withdrawAmount}
+            >
+              {isWithdrawing ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  Processing...
+                </span>
+              ) : (
+                "Withdraw"
+              )}
+            </button>
           </div>
 
           <div className="terminal-card">
