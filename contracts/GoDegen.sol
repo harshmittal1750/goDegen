@@ -17,7 +17,7 @@ contract GoDegen {
     uint24[] public SUPPORTED_FEES = [100, 500, 3000, 10000];
     uint256 public constant DEADLINE_EXTENSION = 20 minutes;
     uint256 public constant MAX_SLIPPAGE = 200; // 50%
-    uint256 public constant MIN_TRADE_AMOUNT = 1e4; // 0.01 USDC
+    uint256 public constant MIN_TRADE_AMOUNT = 1e5; // 0.1 USDC (increased from 0.01)
 
     mapping(address => bool) public whitelistedTokens;
 
@@ -151,53 +151,66 @@ contract GoDegen {
             whitelistedTokens[_tokenIn] && whitelistedTokens[_tokenOut],
             "Tokens not whitelisted"
         );
-        require(_amountIn >= MIN_TRADE_AMOUNT, "Amount too low");
+        require(_amountIn >= MIN_TRADE_AMOUNT, "Amount too low (min 0.1 USDC)");
 
         // Find best pool and fee
         (address pool, uint24 fee) = findBestPool(_tokenIn, _tokenOut);
 
         // Get quote for minimum amount out
-        (uint256 quotedAmount, , , ) = quoter.quoteExactInputSingle(
-            _tokenIn,
-            _tokenOut,
-            fee,
-            _amountIn,
-            0
-        );
+        try
+            quoter.quoteExactInputSingle(_tokenIn, _tokenOut, fee, _amountIn, 0)
+        returns (uint256 quotedAmount, uint160, uint32, uint256) {
+            require(quotedAmount > 0, "Quote returned zero amount");
+            uint256 minAmountOut = (quotedAmount * (10000 - MAX_SLIPPAGE)) /
+                10000;
 
-        uint256 minAmountOut = (quotedAmount * (10000 - MAX_SLIPPAGE)) / 10000;
+            // Transfer tokens from sender
+            require(
+                IERC20(_tokenIn).transferFrom(
+                    msg.sender,
+                    address(this),
+                    _amountIn
+                ),
+                "Transfer failed"
+            );
 
-        // Transfer tokens from sender
-        IERC20(_tokenIn).transferFrom(msg.sender, address(this), _amountIn);
+            // Approve router
+            require(
+                IERC20(_tokenIn).approve(address(swapRouter), _amountIn),
+                "Approve failed"
+            );
 
-        // Approve router
-        IERC20(_tokenIn).approve(address(swapRouter), _amountIn);
+            // Execute swap
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
+                .ExactInputSingleParams({
+                    tokenIn: _tokenIn,
+                    tokenOut: _tokenOut,
+                    fee: fee,
+                    recipient: _recipient,
+                    deadline: block.timestamp + DEADLINE_EXTENSION,
+                    amountIn: _amountIn,
+                    amountOutMinimum: minAmountOut,
+                    sqrtPriceLimitX96: 0
+                });
 
-        // Execute swap
-        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
-            .ExactInputSingleParams({
-                tokenIn: _tokenIn,
-                tokenOut: _tokenOut,
-                fee: fee,
-                recipient: _recipient,
-                deadline: block.timestamp + DEADLINE_EXTENSION,
-                amountIn: _amountIn,
-                amountOutMinimum: minAmountOut,
-                sqrtPriceLimitX96: 0
-            });
+            amountOut = swapRouter.exactInputSingle(params);
+            require(amountOut >= minAmountOut, "Insufficient output amount");
 
-        amountOut = swapRouter.exactInputSingle(params);
+            emit TradeExecuted(
+                _tokenIn,
+                _tokenOut,
+                _amountIn,
+                amountOut,
+                _recipient,
+                fee
+            );
 
-        emit TradeExecuted(
-            _tokenIn,
-            _tokenOut,
-            _amountIn,
-            amountOut,
-            _recipient,
-            fee
-        );
-
-        return amountOut;
+            return amountOut;
+        } catch Error(string memory reason) {
+            revert(string(abi.encodePacked("Quote failed: ", reason)));
+        } catch (bytes memory /*lowLevelData*/) {
+            revert("Failed to get quote - try increasing amount");
+        }
     }
 }
 

@@ -154,10 +154,12 @@ export function TradingInterface() {
       );
 
       // First find the best pool
+      addLog("Finding best pool...", "info");
       const [pool, fee] = await goDegenContract.findBestPool(tokenIn, tokenOut);
       if (!pool) {
         throw new Error("No liquidity pool found");
       }
+      addLog(`Found pool with fee tier ${fee / 10000}%`, "success");
 
       // Get quote to check if trade is possible
       const quoterContract = new ethers.Contract(
@@ -169,18 +171,40 @@ export function TradingInterface() {
       );
 
       const amountIn = ethers.parseUnits(amount, 6); // USDC has 6 decimals
-      const [amountOut] = await quoterContract.quoteExactInputSingle(
-        tokenIn,
-        tokenOut,
-        fee,
-        amountIn,
-        0
-      );
+      addLog(`Getting quote for ${amount} USDC...`, "info");
 
-      return amountOut > 0;
+      try {
+        const [amountOut] = await quoterContract.quoteExactInputSingle(
+          tokenIn,
+          tokenOut,
+          fee,
+          amountIn,
+          0 // sqrtPriceLimitX96
+        );
+
+        addLog(
+          `Quote received: ${ethers.formatUnits(amountOut, 18)} tokens out`,
+          "success"
+        );
+        return amountOut > 0;
+      } catch (error: Error | unknown) {
+        console.error("Quote error:", error);
+        // Check if it's a specific error we can handle
+        if (
+          error instanceof Error &&
+          error.message?.includes("insufficient liquidity")
+        ) {
+          throw new Error("Insufficient liquidity in pool");
+        }
+        throw new Error(
+          `Failed to get quote: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
+      }
     } catch (error) {
       console.error("Error checking liquidity:", error);
-      return false;
+      throw error;
     }
   };
 
@@ -207,7 +231,34 @@ export function TradingInterface() {
         throw new Error("No ethereum provider found");
       }
 
+      const provider = new ethers.BrowserProvider(
+        window.ethereum as Eip1193Provider
+      );
+      const signer = await provider.getSigner();
+      const userAddress = await signer.getAddress();
+
+      // First check if tokens are whitelisted
+      const aiTraderContract = new ethers.Contract(
+        CONTRACT_ADDRESSES.aiTrader,
+        AI_TRADER_ABI,
+        provider
+      );
+
+      addLog("Checking token whitelist status...", "info", tokenAddress);
+      const isUSDCWhitelisted = await aiTraderContract.whitelistedTokens(
+        TOKENS.USDC
+      );
+      const isTokenWhitelisted = await aiTraderContract.whitelistedTokens(
+        tokenAddress
+      );
+
+      if (!isUSDCWhitelisted || !isTokenWhitelisted) {
+        throw new Error("One or both tokens are not whitelisted for trading");
+      }
+      addLog("Tokens are whitelisted ✓", "success", tokenAddress);
+
       // Check liquidity before proceeding
+      addLog("Checking pool liquidity...", "info", tokenAddress);
       const hasLiquidity = await checkPoolLiquidity(
         TOKENS.USDC,
         tokenAddress,
@@ -217,6 +268,7 @@ export function TradingInterface() {
       if (!hasLiquidity) {
         throw new Error("Insufficient liquidity in pool");
       }
+      addLog("Pool has sufficient liquidity ✓", "success", tokenAddress);
 
       // Only check conditions if DEGEN MODE is off
       if (!degenMode) {
@@ -278,7 +330,7 @@ export function TradingInterface() {
 
       // Execute trade
       addLog(
-        `Executing trade: ${tokenSettings.tradeAmount} USDC → ${getTokenSymbol(
+        `Preparing trade: ${tokenSettings.tradeAmount} USDC → ${getTokenSymbol(
           tokenAddress
         )}`,
         "info",
@@ -286,13 +338,9 @@ export function TradingInterface() {
       );
 
       const amount = ethers.parseUnits(tokenSettings.tradeAmount, 6);
-      const provider = new ethers.BrowserProvider(
-        window.ethereum as Eip1193Provider
-      );
-      const signer = await provider.getSigner();
-      const userAddress = await signer.getAddress();
 
       // First check USDC balance
+      addLog("Checking USDC balance...", "info", tokenAddress);
       const usdcContract = new ethers.Contract(
         TOKENS.USDC,
         [
@@ -305,10 +353,17 @@ export function TradingInterface() {
 
       const balance = await usdcContract.balanceOf(userAddress);
       if (balance < amount) {
-        throw new Error("Insufficient USDC balance");
+        throw new Error(
+          `Insufficient USDC balance. You have ${ethers.formatUnits(
+            balance,
+            6
+          )} USDC`
+        );
       }
+      addLog("USDC balance sufficient ✓", "success", tokenAddress);
 
       // Check and approve USDC spending
+      addLog("Checking USDC allowance...", "info", tokenAddress);
       const allowance = await usdcContract.allowance(
         userAddress,
         CONTRACT_ADDRESSES.aiTrader
@@ -320,29 +375,44 @@ export function TradingInterface() {
           CONTRACT_ADDRESSES.aiTrader,
           ethers.MaxUint256
         );
+        addLog("Waiting for approval transaction...", "info", tokenAddress);
         await approveTx.wait();
-        addLog("USDC approved for spending", "success", tokenAddress);
+        addLog("USDC approved for spending ✓", "success", tokenAddress);
+      } else {
+        addLog("USDC already approved ✓", "success", tokenAddress);
       }
 
       // Execute trade through GoDegen (AI_Trader) contract
-      const goDegenContract = new ethers.Contract(
-        CONTRACT_ADDRESSES.aiTrader,
-        AI_TRADER_ABI,
-        signer
-      );
-
       addLog("Executing trade...", "info", tokenAddress);
-      const tx = await goDegenContract.executeManualTrade(
+      const aiTraderWithSigner = aiTraderContract.connect(
+        signer
+      ) as ethers.Contract & {
+        executeManualTrade(
+          tokenIn: string,
+          tokenOut: string,
+          amountIn: ethers.BigNumberish,
+          recipient: string,
+          options?: { gasLimit: number }
+        ): Promise<ethers.ContractTransactionResponse>;
+      };
+
+      const tx = await aiTraderWithSigner.executeManualTrade(
         TOKENS.USDC,
         tokenAddress,
         amount,
-        userAddress
+        userAddress,
+        {
+          gasLimit: 1000000, // Add gas limit to prevent transaction failures
+        }
       );
 
       addLog("Waiting for transaction confirmation...", "info", tokenAddress);
-      await tx.wait();
+      const receipt = await tx.wait();
+      if (!receipt) {
+        throw new Error("Failed to get transaction receipt");
+      }
       addLog(
-        `Trade executed successfully! TX: ${tx.hash}`,
+        `Trade executed successfully! TX: ${receipt.hash}`,
         "success",
         tokenAddress
       );
