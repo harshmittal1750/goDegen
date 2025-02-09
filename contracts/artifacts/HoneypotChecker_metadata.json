@@ -53,11 +53,11 @@
 	},
 	"sources": {
 		"contracts/GoDegen.sol": {
-			"keccak256": "0x59a61acf994a0471215b17e184599fd93c010b226154a7283065d6859f201288",
+			"keccak256": "0x1e0c9dc4bd090632d03b823dfdf34462a0cb288a8e6d1e15d2667d8234db4a1b",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://b119abfb326b8045e8188106b98b51712a4d88d25273900021ae04cf83f0ef7a",
-				"dweb:/ipfs/QmUUZd3A7qrz9wb3GNfG8xq7bcnDuTjMBxo1rxxB2q37fe"
+				"bzz-raw://e183e03866a00a0e2f958b67a163be5188f66ba9744857eda97a596015e5dc9a",
+				"dweb:/ipfs/Qma2UZtzAQ6vJSpLRuuvDt7X9QeX825i7LxMcsQzSwHAdC"
 			]
 		},
 		"contracts/Interfaces.sol": {
