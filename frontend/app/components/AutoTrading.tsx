@@ -7,6 +7,14 @@ import {
   TOKENS,
   AI_TRADER_ABI,
 } from "../lib/constants";
+import {
+  AnimatedLog,
+  AnimatedLogContainer,
+  // AnimatedValue,
+  AnimatedCard,
+  AnimatedTitle,
+} from "./AnimatedLog";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface AutoTradingSettings {
   enabled: boolean;
@@ -323,7 +331,7 @@ export function AutoTrading() {
                 workingPool = true;
                 break; // Found a working pool, no need to check others
               }
-            } catch (quoteError) {
+            } catch {
               addLog(
                 `Pool with fee tier ${
                   fee / 10000
@@ -742,7 +750,7 @@ export function AutoTrading() {
                   workingPool = true;
                   break; // Found a working pool, no need to check others
                 }
-              } catch (quoteError) {
+              } catch {
                 addLog(
                   `Pool with fee tier ${
                     fee / 10000
@@ -898,93 +906,120 @@ export function AutoTrading() {
   }
 
   return (
-    <div className="p-6 rounded-lg shadow-md ">
+    <div className="p-6 rounded-lg shadow-md">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-xl font-semibold">Auto-Trading Settings</h3>
-        <button
+        <AnimatedTitle>Auto-Trading Settings</AnimatedTitle>
+        <motion.button
           onClick={testAutoTrade}
           disabled={updating || !settings.enabled}
           className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
         >
           {updating ? "Testing..." : "Test Auto Trade"}
-        </button>
+        </motion.button>
       </div>
 
       <div className="space-y-4">
-        <div className="flex items-center">
-          <label className="flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.enabled}
+        <AnimatedCard>
+          <div className="flex items-center">
+            <label className="flex items-center cursor-pointer">
+              <motion.input
+                type="checkbox"
+                checked={settings.enabled}
+                onChange={(e) =>
+                  setSettings({ ...settings, enabled: e.target.checked })
+                }
+                className="form-checkbox h-5 w-5 text-blue-600"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+              />
+              <span className="ml-2">Enable Auto-Trading</span>
+            </label>
+          </div>
+        </AnimatedCard>
+
+        <AnimatedCard>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Minimum Confidence (0-100)
+            </label>
+            <motion.input
+              type="number"
+              min="0"
+              max="100"
+              value={settings.minConfidence}
               onChange={(e) =>
-                setSettings({ ...settings, enabled: e.target.checked })
+                setSettings({
+                  ...settings,
+                  minConfidence: parseInt(e.target.value),
+                })
               }
-              className="form-checkbox h-5 w-5 text-blue-600"
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              whileHover={{ scale: 1.02 }}
+              whileFocus={{ scale: 1.02 }}
             />
-            <span className="ml-2">Enable Auto-Trading</span>
-          </label>
-        </div>
+          </div>
+        </AnimatedCard>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Minimum Confidence (0-100)
-          </label>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            value={settings.minConfidence}
-            onChange={(e) =>
-              setSettings({
-                ...settings,
-                minConfidence: parseInt(e.target.value),
-              })
-            }
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-          />
-        </div>
+        <AnimatedCard>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Maximum Risk Score (0-100)
+            </label>
+            <motion.input
+              type="number"
+              min="0"
+              max="100"
+              value={settings.maxRiskScore}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  maxRiskScore: parseInt(e.target.value),
+                })
+              }
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              whileHover={{ scale: 1.02 }}
+              whileFocus={{ scale: 1.02 }}
+            />
+          </div>
+        </AnimatedCard>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Maximum Risk Score (0-100)
-          </label>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            value={settings.maxRiskScore}
-            onChange={(e) =>
-              setSettings({
-                ...settings,
-                maxRiskScore: parseInt(e.target.value),
-              })
-            }
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-          />
-        </div>
+        <AnimatedCard>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Trade Amount (USDC)
+            </label>
+            <motion.input
+              type="number"
+              min="0"
+              step="1"
+              value={settings.tradeAmount}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  tradeAmount: e.target.value,
+                })
+              }
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              whileHover={{ scale: 1.02 }}
+              whileFocus={{ scale: 1.02 }}
+            />
+          </div>
+        </AnimatedCard>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Trade Amount (USDC)
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={settings.tradeAmount}
-            onChange={(e) =>
-              setSettings({
-                ...settings,
-                tradeAmount: e.target.value,
-              })
-            }
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-          />
-        </div>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="text-red-600 text-sm"
+          >
+            {error}
+          </motion.div>
+        )}
 
-        {error && <div className="text-red-600 text-sm">{error}</div>}
-
-        <button
+        <motion.button
           onClick={updateSettings}
           disabled={updating}
           className={`w-full px-4 py-2 text-white rounded ${
@@ -992,39 +1027,38 @@ export function AutoTrading() {
               ? "bg-gray-400 cursor-not-allowed"
               : "bg-blue-600 hover:bg-blue-700"
           }`}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
         >
           {updating ? "Updating..." : "Update Settings"}
-        </button>
+        </motion.button>
 
         {/* Trading Logs */}
         <div className="mt-6">
-          <h4 className="text-lg font-semibold mb-2">Auto-Trading Logs</h4>
-          <div className="h-48 overflow-y-auto border rounded-lg p-4 space-y-2">
-            {logs.map((log, index) => (
-              <div
-                key={index}
-                className={`p-2 rounded ${
-                  log.type === "error"
-                    ? "bg-red-100 text-red-700"
-                    : log.type === "warning"
-                    ? "bg-yellow-100 text-yellow-700"
-                    : log.type === "success"
-                    ? "bg-green-100 text-green-700"
-                    : "bg-gray-100 text-gray-700"
-                }`}
-              >
-                <span className="text-xs text-gray-500">
-                  {new Date(log.timestamp).toLocaleTimeString()}
-                </span>
-                <span className="ml-2">{log.message}</span>
-              </div>
-            ))}
-            {logs.length === 0 && (
-              <p className="text-gray-500 text-center">
-                No trading activity yet
-              </p>
-            )}
-          </div>
+          <AnimatedTitle>Auto-Trading Logs</AnimatedTitle>
+          <AnimatedLogContainer>
+            <div className="h-48 overflow-y-auto border rounded-lg p-4 space-y-2 relative">
+              <AnimatePresence initial={false}>
+                {logs.map((log, index) => (
+                  <AnimatedLog
+                    key={log.timestamp + index}
+                    message={log.message}
+                    type={log.type}
+                    timestamp={log.timestamp}
+                  />
+                ))}
+                {logs.length === 0 && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.5 }}
+                    className="text-gray-500 text-center"
+                  >
+                    No trading activity yet
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </div>
+          </AnimatedLogContainer>
         </div>
       </div>
     </div>

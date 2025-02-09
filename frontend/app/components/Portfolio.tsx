@@ -11,6 +11,8 @@ import {
 import { NetworkManager } from "./NetworkManager";
 import { TradingInterface } from "./TradingInterface";
 import { AutoTrading } from "./AutoTrading";
+import { motion, AnimatePresence } from "framer-motion";
+import { AnimatedCard, AnimatedTitle, AnimatedValue } from "./AnimatedLog";
 // import { TokenManager } from "./TokenManager";
 
 interface PortfolioData {
@@ -392,135 +394,152 @@ export function Portfolio() {
 
   return (
     <section className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="gradient-text text-2xl font-bold">
-          AI Portfolio Manager
-        </h2>
+      <motion.div
+        className="flex items-center justify-between"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <AnimatedTitle>AI Portfolio Manager</AnimatedTitle>
         <NetworkManager />
-      </div>
+      </motion.div>
 
       {isOwner && (
-        <div className="terminal-card">
+        <AnimatedCard glowColor="purple">
           <h3 className="terminal-header">Admin Panel</h3>
-          <button
+          <motion.button
             onClick={handleApproveToken}
             className="btn-primary"
             disabled={isDepositing}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
           >
             {isDepositing ? "Approving..." : "Approve USDC"}
-          </button>
-        </div>
+          </motion.button>
+        </AnimatedCard>
       )}
 
       {loading ? (
-        <div className="text-primary">Loading portfolio data...</div>
+        <motion.div
+          className="text-primary"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          Loading portfolio data...
+        </motion.div>
       ) : !portfolio?.isActive ? (
-        <div className="terminal-card">
+        <AnimatedCard>
           <h3 className="terminal-header">Create Portfolio</h3>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2">
                 Risk Level (1-10)
               </label>
-              <input
+              <motion.input
                 type="range"
                 min="1"
                 max="10"
                 value={riskLevel}
                 onChange={(e) => setRiskLevel(Number(e.target.value))}
                 className="w-full"
+                whileHover={{ scale: 1.02 }}
               />
-              <span className="text-sm">{riskLevel}</span>
+              <motion.span
+                className="text-sm"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                {riskLevel}
+              </motion.span>
             </div>
-            <button onClick={createPortfolio} className="btn-primary">
+            <motion.button
+              onClick={createPortfolio}
+              className="btn-primary"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
               Create Portfolio
-            </button>
+            </motion.button>
           </div>
-        </div>
+        </AnimatedCard>
       ) : (
         <div className="grid gap-6">
-          <div className="stats-card">
+          <AnimatedCard glowColor="blue">
             <h3 className="terminal-header">Portfolio Overview</h3>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-400">Total Value</p>
-                <p className="text-lg font-semibold gradient-text">
-                  ${portfolio.totalValue.toFixed(2)}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-400">Risk Level</p>
-                <p className="text-lg font-semibold gradient-text">
-                  {portfolio.riskLevel}/10
-                </p>
-              </div>
+              <AnimatedValue
+                label="Total Value"
+                value={`$${portfolio.totalValue.toFixed(2)}`}
+              />
+              <AnimatedValue
+                label="Risk Level"
+                value={`${portfolio.riskLevel}/10`}
+              />
             </div>
-          </div>
+          </AnimatedCard>
 
           {/* <div className="terminal-card">
             <h3 className="terminal-header">Token Manager</h3>
             <TokenManager />
           </div> */}
 
-          <div className="terminal-card">
+          <AnimatedCard glowColor="purple">
             <h3 className="terminal-header">AI Predictions</h3>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-400">Confidence</p>
-                <p className="text-lg font-semibold gradient-text">
-                  {portfolio.predictions.confidence}%
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-400">Price Direction</p>
-                <p
-                  className={`text-lg font-semibold ${
-                    portfolio.predictions.priceDirection > 0
-                      ? "text-green-400"
-                      : portfolio.predictions.priceDirection < 0
-                      ? "text-red-400"
-                      : "text-gray-400"
-                  }`}
-                >
-                  {portfolio.predictions.priceDirection > 0
-                    ? "↑ Up"
+              <AnimatedValue
+                label="Confidence"
+                value={`${portfolio.predictions.confidence}%`}
+              />
+              <AnimatedValue
+                label="Price Direction"
+                value={
+                  portfolio.predictions.priceDirection > 0
+                    ? "Upward"
                     : portfolio.predictions.priceDirection < 0
-                    ? "↓ Down"
-                    : "→ Neutral"}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-400">Risk Score</p>
-                <p className="text-lg font-semibold gradient-text">
-                  {portfolio.predictions.riskScore}/100
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-400">Honeypot Risk</p>
-                <p
-                  className={`text-lg font-semibold ${
-                    portfolio.predictions.isHoneypot
-                      ? "text-red-400"
-                      : "text-green-400"
-                  }`}
-                >
-                  {portfolio.predictions.isHoneypot ? "High Risk" : "Low Risk"}
-                </p>
-              </div>
+                    ? "Downward"
+                    : "Neutral"
+                }
+                trend={
+                  portfolio.predictions.priceDirection > 0
+                    ? "up"
+                    : portfolio.predictions.priceDirection < 0
+                    ? "down"
+                    : "neutral"
+                }
+              />
+              <AnimatedValue
+                label="Risk Score"
+                value={`${portfolio.predictions.riskScore}/100`}
+              />
+              <AnimatedValue
+                label="Honeypot Risk"
+                value={
+                  portfolio.predictions.isHoneypot ? "High Risk" : "Low Risk"
+                }
+                trend={portfolio.predictions.isHoneypot ? "down" : "up"}
+              />
             </div>
-          </div>
+          </AnimatedCard>
 
-          <div className="terminal-card">
+          <AnimatedCard>
             <h3 className="terminal-header">Deposit/Withdraw Funds</h3>
-            {errorMessage && (
-              <div className="mb-4 p-3 bg-red-900/20 text-red-400 rounded border border-red-800">
-                {errorMessage}
-              </div>
-            )}
+            <AnimatePresence>
+              {errorMessage && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="mb-4 p-3 bg-red-900/20 text-red-400 rounded border border-red-800"
+                >
+                  {errorMessage}
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Amount</label>
-                <input
+                <motion.input
                   type="number"
                   value={depositAmount}
                   onChange={(e) => {
@@ -529,16 +548,29 @@ export function Portfolio() {
                   }}
                   placeholder="Enter amount"
                   disabled={isDepositing}
+                  whileHover={{ scale: 1.02 }}
+                  whileFocus={{ scale: 1.02 }}
                 />
               </div>
-              <button
+              <motion.button
                 onClick={handleDeposit}
                 className="btn-primary w-full"
                 disabled={isDepositing || !depositAmount}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
               >
                 {isDepositing ? (
                   <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <motion.svg
+                      className="h-5 w-5"
+                      viewBox="0 0 24 24"
+                      animate={{ rotate: 360 }}
+                      transition={{
+                        duration: 1,
+                        repeat: Infinity,
+                        ease: "linear",
+                      }}
+                    >
                       <circle
                         className="opacity-25"
                         cx="12"
@@ -552,33 +584,46 @@ export function Portfolio() {
                         fill="currentColor"
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       />
-                    </svg>
+                    </motion.svg>
                     Processing...
                   </span>
                 ) : (
                   "Deposit"
                 )}
-              </button>
+              </motion.button>
             </div>
 
             <div>
               <label className="block text-sm font-medium mb-2">Amount</label>
-              <input
+              <motion.input
                 type="number"
                 value={withdrawAmount}
                 onChange={(e) => setWithdrawAmount(e.target.value)}
                 placeholder="Enter amount"
                 disabled={isWithdrawing}
+                whileHover={{ scale: 1.02 }}
+                whileFocus={{ scale: 1.02 }}
               />
             </div>
-            <button
+            <motion.button
               onClick={handleWithdraw}
               className="btn-primary w-full"
               disabled={isWithdrawing || !withdrawAmount}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
             >
               {isWithdrawing ? (
                 <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <motion.svg
+                    className="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    animate={{ rotate: 360 }}
+                    transition={{
+                      duration: 1,
+                      repeat: Infinity,
+                      ease: "linear",
+                    }}
+                  >
                     <circle
                       className="opacity-25"
                       cx="12"
@@ -592,27 +637,37 @@ export function Portfolio() {
                       fill="currentColor"
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
-                  </svg>
+                  </motion.svg>
                   Processing...
                 </span>
               ) : (
                 "Withdraw"
               )}
-            </button>
-          </div>
+            </motion.button>
+          </AnimatedCard>
 
-          <div className="terminal-card">
+          <AnimatedCard glowColor="green">
             <h3 className="terminal-header">Portfolio Dashboard</h3>
 
             {portfolio?.isActive && (
-              <div className="mb-4 p-4 bg-[#0253FF]/10 rounded-lg border border-[#0253FF]/20">
+              <motion.div
+                className="mb-4 p-4 bg-[#0253FF]/10 rounded-lg border border-[#0253FF]/20"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3 }}
+              >
                 <h4 className="text-lg font-semibold mb-2 text-[#0253FF]">
                   Portfolio Balance
                 </h4>
-                <p className="text-2xl font-bold gradient-text">
+                <motion.p
+                  className="text-2xl font-bold gradient-text"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
                   {portfolio.usdcBalance} USDC
-                </p>
-              </div>
+                </motion.p>
+              </motion.div>
             )}
 
             <div className="trade-card">
@@ -620,11 +675,16 @@ export function Portfolio() {
             </div>
 
             {portfolio?.isActive && (
-              <div className="mt-6">
+              <motion.div
+                className="mt-6"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+              >
                 <AutoTrading />
-              </div>
+              </motion.div>
             )}
-          </div>
+          </AnimatedCard>
         </div>
       )}
     </section>

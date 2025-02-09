@@ -5,10 +5,16 @@ import { ethers } from "ethers";
 import { Eip1193Provider } from "ethers";
 import { CONTRACT_ADDRESSES, TOKENS, POOLS, POOL_FEES } from "../lib/constants";
 import {
-  AI_ORACLE_ABI,
   PORTFOLIO_MANAGER_ABI,
+  AI_ORACLE_ABI,
   AI_TRADER_ABI,
 } from "../lib/abis";
+import {
+  AnimatedTitle,
+  AnimatedLogContainer,
+  AnimatedLog,
+} from "./AnimatedLog";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface TradePrediction {
   confidence: number;
@@ -1185,40 +1191,32 @@ export function TradingInterface() {
             </div>
           </div>
         ))}
-        ,{/* Trading Logs */}
-        <div className="container mt-6">
-          <h4 className="text-lg font-semibold mb-2">Trading Logs</h4>
-          <div className=" h-64 overflow-y-auto border rounded-lg p-4 space-y-2">
-            {tradingLogs.map((log, index) => (
-              <div
-                key={index}
-                className={`p-2 rounded ${
-                  log.type === "error"
-                    ? "bg-red-100 text-red-700"
-                    : log.type === "warning"
-                    ? "bg-yellow-100 text-yellow-700"
-                    : log.type === "success"
-                    ? "bg-green-100 text-green-700"
-                    : "bg-gray-100 text-gray-700"
-                }`}
-              >
-                <span className="text-xs text-gray-500">
-                  {new Date(log.timestamp).toLocaleTimeString()}
-                </span>
-                {log.token && (
-                  <span className="text-xs font-medium ml-2">
-                    [{getTokenSymbol(log.token)}]
-                  </span>
+        {/* Trading Logs */}
+        <div className="mt-6">
+          <AnimatedTitle>Trading Logs</AnimatedTitle>
+          <AnimatedLogContainer>
+            <div className="h-64 overflow-y-auto border rounded-lg p-4 space-y-2 relative">
+              <AnimatePresence initial={false}>
+                {tradingLogs.map((log, index) => (
+                  <AnimatedLog
+                    key={log.timestamp + index}
+                    message={log.message}
+                    type={log.type}
+                    timestamp={log.timestamp}
+                  />
+                ))}
+                {tradingLogs.length === 0 && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.5 }}
+                    className="text-gray-500 text-center"
+                  >
+                    No trading activity yet
+                  </motion.p>
                 )}
-                <span className="ml-2">{log.message}</span>
-              </div>
-            ))}
-            {tradingLogs.length === 0 && (
-              <p className="text-gray-500 text-center">
-                No trading activity yet
-              </p>
-            )}
-          </div>
+              </AnimatePresence>
+            </div>
+          </AnimatedLogContainer>
         </div>
         {/* Error Display */}
         {error && (

@@ -291,7 +291,7 @@ interface PriceAnalytics {
 1. Clone the repository
 
    ```bash
-   git clone https://github.com/yourusername/goDegen.git
+   git clone https://github.com/harshmittal1750/goDegen
    cd goDegen
    ```
 
@@ -347,12 +347,10 @@ interface PriceAnalytics {
 - Chain ID: 8453
 - Explorer: https://basescan.org
 
-## Contract Addresses
-
 ```typescript
-portfolioManager: "0x70861c3004Cf269Bb0907Fdd9E05e9897a11B75e";
-aiTrader: "0xDBdEF0fEe36D2fdA21278b42dF6b3AB8B555913b";
-aiOracle: "0xab4a060e71905C906EF63Ccb4cDca88111c27483";
+portfolioManager: "0x5311762b56488E6A5bE780910bAb20353A93FBdb";
+aiTrader: "0x3d66bc567613a5E7D3b49bb3b8C7BFf53EEB82f6";
+aiOracle: "0x8e5aF933650BE4af3A58d949e5B817194aC5d91f";
 ```
 
 ## Disclaimer
