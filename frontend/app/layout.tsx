@@ -8,7 +8,7 @@ import {
   Stalinist_One,
 } from "next/font/google";
 import { Providers } from "./providers";
-
+import { Analytics } from "@vercel/analytics/react";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -58,7 +58,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${orbitron.variable} ${jetbrainsMono.variable} ${stalinistOne.variable} antialiased`}
       >
-        <Providers> {children}</Providers>
+        <Providers>
+          {children}
+          <Analytics />
+        </Providers>
       </body>
     </html>
   );
